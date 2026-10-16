@@ -1,0 +1,501 @@
+// Builds the BergHanziTrainer landing page: images (AVIF/WebP/JPEG, fingerprinted), index.html,
+// robots.txt, sitemap.xml and (with --with-apk) the APK copy. App facts (version, icon, APK, stroke data) are read
+// from the BergHanziTrainer checkout, by default a sibling folder of this repository. Usage:
+//   node build.mjs                                   -> ../docs, https://bergshrund73.github.io/BergWeb/
+//   node build.mjs --out <dir> --base <url>          -> e.g. a localhost build for validation
+//   node build.mjs --app <path to BergHanziTrainer>
+//   node build.mjs --with-apk                        -> publish the release APK; without it the download is a stub
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import sharp from 'sharp';
+
+const HERE = import.meta.dirname;
+const args = Object.fromEntries(
+  process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]]] : acc), []),
+);
+const REPO = path.resolve(HERE, args.app ?? '../../BergHanziTrainer');
+const OUT = path.resolve(HERE, args.out ?? '../docs');
+const BASE = args.base ?? 'https://bergshrund73.github.io/BergWeb/';
+
+// ---------- encoding helpers (all values are encoded for their output context) ----------
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+function safeUrl(u) {
+  const parsed = new URL(u);
+  const localHttp = parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+  if (parsed.protocol !== 'https:' && !localHttp) throw new Error(`Rejected URL scheme: ${u}`);
+  return parsed.href;
+}
+const abs = (rel) => safeUrl(new URL(rel, safeUrl(BASE)).href);
+const jsonLd = (obj) => JSON.stringify(obj).replace(/</g, '\\u003c');
+
+// ---------- facts, read from the project itself ----------
+const gradle = fs.readFileSync(path.join(REPO, 'app/build.gradle.kts'), 'utf8');
+const VERSION = gradle.match(/versionName = "([^"]+)"/)[1];
+const MIN_SDK = Number(gradle.match(/minSdk = (\d+)/)[1]);
+const ANDROID_BY_SDK = { 29: '10', 30: '11', 31: '12', 33: '13', 34: '14', 35: '15' };
+const ANDROID_MIN = ANDROID_BY_SDK[MIN_SDK];
+const APK_SRC = path.join(REPO, 'app/build/outputs/apk/release/app-release.apk');
+const APK_NAME = `berghanzitrainer-${VERSION}.apk`;
+const WITH_APK = process.argv.includes('--with-apk');
+const apkBytes = WITH_APK ? fs.readFileSync(APK_SRC) : null;
+const APK_SHA256 = apkBytes && crypto.createHash('sha256').update(apkBytes).digest('hex');
+const APK_MB = apkBytes && Math.round(apkBytes.length / 1024 / 1024);
+const STROKE_CHARS = fs.readFileSync(path.join(REPO, 'app/src/main/assets/makemeahanzi/graphics.txt'), 'utf8')
+  .split('\n').filter((l) => l.trim()).length;
+const fmtInt = (n) => n.toLocaleString('ru-RU').replace(/\s/g, ' ');
+
+// ---------- output dirs ----------
+fs.rmSync(path.join(OUT, 'images'), { recursive: true, force: true });
+fs.rmSync(path.join(OUT, 'download'), { recursive: true, force: true });
+fs.mkdirSync(path.join(OUT, 'images'), { recursive: true });
+if (WITH_APK) {
+  fs.mkdirSync(path.join(OUT, 'download'), { recursive: true });
+  fs.copyFileSync(APK_SRC, path.join(OUT, 'download', APK_NAME));
+}
+
+const hash8 = (buf) => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 8);
+function emit(buf, base, ext) {
+  const name = `images/${base}.${hash8(buf)}.${ext}`;
+  fs.writeFileSync(path.join(OUT, name), buf);
+  return name;
+}
+
+// ---------- logo: the launcher vector drawable, rendered in memory (no SVG is shipped) ----------
+const drawable = fs.readFileSync(path.join(REPO, 'app/src/main/res/drawable/ic_launcher_foreground.xml'), 'utf8');
+const glyphPaths = [...drawable.matchAll(/android:fillColor="(#[0-9A-Fa-f]{6})"\s+android:pathData="([^"]+)"/g)]
+  .map((m) => `<path fill="${m[1]}" d="${m[2]}"/>`).join('');
+const PAPER = '#F4EFE6';
+const logoSvg = (bg) => Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">${bg ? `<rect x="0" y="0" width="108" height="108" fill="${bg}"/>` : ''}${glyphPaths}</svg>`,
+);
+const renderLogo = (size, bg = PAPER) => sharp(logoSvg(bg), { density: 1200 }).resize(size, size).png().toBuffer();
+
+const favicon = await renderLogo(96);
+fs.writeFileSync(path.join(OUT, 'favicon.png'), favicon);
+fs.writeFileSync(path.join(OUT, 'apple-touch-icon.png'), await renderLogo(180));
+
+const LOGO_W = [48, 96, 144];
+const logo = { avif: [], webp: [], png: [] };
+for (const w of LOGO_W) {
+  const png = await renderLogo(w);
+  logo.png.push([emit(png, `logo-${w}`, 'png'), w]);
+  logo.webp.push([emit(await sharp(png).webp({ quality: 90 }).toBuffer(), `logo-${w}`, 'webp'), w]);
+  logo.avif.push([emit(await sharp(png).avif({ quality: 70 }).toBuffer(), `logo-${w}`, 'avif'), w]);
+}
+
+// ---------- screenshots: emulator captures (720x1280) without status and navigation bars ----------
+const SHOT = { w: 720, h: 1180 };
+const SHOT_W = [320, 480, 640, 720]; // never upscaled past the 720px source
+async function shot(file) {
+  const src = await sharp(path.join(HERE, 'src', file)).extract({ left: 0, top: 52, width: SHOT.w, height: SHOT.h }).toBuffer();
+  const set = { avif: [], webp: [], jpg: [] };
+  const base = path.basename(file, '.png');
+  for (const w of SHOT_W) {
+    const r = sharp(src).resize(w);
+    set.avif.push([emit(await r.clone().avif({ quality: 55 }).toBuffer(), `${base}-${w}`, 'avif'), w]);
+    set.webp.push([emit(await r.clone().webp({ quality: 80 }).toBuffer(), `${base}-${w}`, 'webp'), w]);
+    set.jpg.push([emit(await r.clone().jpeg({ quality: 80, mozjpeg: true }).toBuffer(), `${base}-${w}`, 'jpg'), w]);
+  }
+  return set;
+}
+const shots = {
+  copybook: await shot('shot-copybook.png'),
+  trace: await shot('shot-trace.png'),
+  lists: await shot('shot-lists.png'),
+  words: await shot('shot-words.png'),
+};
+
+// ---------- Open Graph image 1200x630 ----------
+const ogText = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630">
+  <text x="520" y="230" font-family="Segoe UI, Arial, sans-serif" font-weight="700" font-size="64" fill="#22201C">BergHanziTrainer</text>
+  <text x="520" y="310" font-family="Segoe UI, Arial, sans-serif" font-size="42" fill="#22201C">Тренажёр написания</text>
+  <text x="520" y="364" font-family="Segoe UI, Arial, sans-serif" font-size="42" fill="#22201C">китайских иероглифов</text>
+  <text x="520" y="450" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="34" fill="#B3362B">写汉字 · Android · бесплатно</text>
+</svg>`);
+const og = await sharp({ create: { width: 1200, height: 630, channels: 3, background: PAPER } })
+  .composite([{ input: await renderLogo(400), left: 80, top: 115 }, { input: ogText, left: 0, top: 0 }])
+  .jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+const OG_IMG = emit(og, 'og-cover', 'jpg');
+
+// ---------- markup helpers ----------
+const srcset = (list) => list.map(([f, w]) => `${abs(f)} ${w}w`).join(', ');
+function picture(set, { alt, sizes, w, h, lcp = false, eager = false, cls = '' }) {
+  const fallback = set.jpg ?? set.png;
+  const loading = lcp ? 'fetchpriority="high"' : eager ? '' : 'loading="lazy"';
+  return `<picture>`
+    + `<source type="image/avif" srcset="${esc(srcset(set.avif))}" sizes="${esc(sizes)}">`
+    + `<source type="image/webp" srcset="${esc(srcset(set.webp))}" sizes="${esc(sizes)}">`
+    + `<img${cls ? ` class="${cls}"` : ''} src="${esc(abs(fallback.at(-1)[0]))}" srcset="${esc(srcset(fallback))}" sizes="${esc(sizes)}"`
+    + ` alt="${esc(alt)}" width="${w}" height="${h}"${loading ? ` ${loading}` : ''} decoding="async">`
+    + `</picture>`;
+}
+
+const CANONICAL = abs('./');
+const APK_URL = abs(`download/${APK_NAME}`);
+const GITHUB_PROFILE = 'https://github.com/Bergshrund73';
+const TITLE = 'Тренажёр написания китайских иероглифов — BergHanziTrainer';
+const DESCRIPTION = 'Учитесь писать китайские иероглифы на Android: порядок черт, обводка, письмо по памяти, пиньинь и свои списки слов. Бесплатно, работает без интернета.';
+
+const FAQ = [
+  ['Сколько стоит приложение?', 'Нисколько. BergHanziTrainer бесплатный, без рекламы и без подписок. Если приложение помогает, проект можно поддержать донатом.'],
+  ['Нужен ли интернет?', 'Нет. Приложение не запрашивает доступ к сети: слова, списки и прогресс хранятся только на вашем телефоне.'],
+  ['На каких телефонах работает?', `На Android ${ANDROID_MIN} и новее. Версий для iPhone пока нет.`],
+  ['Почему APK, а не Google Play?', `Это частная разработка, поэтому приложение ${WITH_APK ? 'распространяется' : 'будет распространяться'} файлом APK прямо с этой страницы. Android попросит один раз разрешить установку из браузера или файлового менеджера.`],
+  ['Можно перенести слова из Pleco или Anki?', 'Да. Импорт понимает файлы .txt, .csv и .tsv из Pleco, Anki и Excel, а также вставку текста. Списки можно выгрузить обратно для Pleco или сохранить резервной копией в JSON.'],
+  ['Откуда данные о порядке черт?', `Из открытого проекта Make Me a Hanzi: в приложении ${fmtInt(STROKE_CHARS)} иероглифов с порядком черт.`],
+];
+
+// ---------- CSS (inlined; authorised by a CSP hash) ----------
+const CSS = `
+:root{--paper:#F4EFE6;--paper-hi:#FFFDF8;--shade:#EAE3D6;--line:#E2D9C9;--ink:#22201C;--muted:#6A6358;--red:#B3362B;--on-red:#FFFDF8;--red-soft:#F3DCD5;--jade:#2F6B4F;--jade-soft:#D5E8DB;--ice:#3F6274;--shadow:0 18px 40px rgba(34,32,28,.16);color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--paper:#141619;--paper-hi:#1D2024;--shade:#272B30;--line:#2E3338;--ink:#ECE7DE;--muted:#A39D93;--red:#E27A63;--on-red:#141619;--red-soft:#5A2A20;--jade:#7FC8A2;--jade-soft:#1F4A35;--ice:#8FB3C6;--shadow:0 18px 40px rgba(0,0,0,.45)}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:80px}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Roboto","Oxygen","Ubuntu","Cantarell","Helvetica Neue",Arial,sans-serif;font-size:1.0625rem;line-height:1.6}
+img{max-width:100%;height:auto;display:block}
+a{color:var(--red)}
+a:focus-visible,summary:focus-visible{outline:3px solid var(--ice);outline-offset:3px;border-radius:4px}
+.container{width:100%;max-width:1200px;margin:0 auto;padding-inline:max(16px,env(safe-area-inset-left)) max(16px,env(safe-area-inset-right))}
+.zh{font-family:"KaiTi","STKaiti","Kaiti SC","Noto Serif CJK SC","Songti SC","SimSun",serif;font-weight:400}
+.site-header{position:sticky;top:0;z-index:10;background:var(--paper);border-bottom:1px solid var(--line);padding-top:env(safe-area-inset-top)}
+.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:64px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ink);text-decoration:none;font-weight:700;font-size:1.0625rem}
+.brand img{width:40px;height:40px;border-radius:10px;border:1px solid var(--line)}
+.nav{display:flex;gap:4px;align-items:center}
+.nav a{color:var(--ink);text-decoration:none;padding:8px 12px;border-radius:999px;font-size:.9375rem}
+.nav a:hover{background:var(--shade)}
+.nav .nav-cta{background:var(--red);color:var(--on-red);font-weight:600}
+.nav .nav-cta:hover{background:var(--red)}
+.nav-extra{display:none}
+@media (min-width:760px){.nav-extra{display:inline-block}}
+.hero{padding:40px 0 56px}
+.hero-grid{display:grid;gap:40px;align-items:center}
+@media (min-width:900px){.hero-grid{grid-template-columns:1.25fr .75fr}.hero{padding:72px 0 88px}}
+.kicker{margin:0 0 12px;color:var(--muted);font-size:1rem}
+.kicker .zh{color:var(--red);font-size:1.75rem;margin-inline-end:8px;vertical-align:-3px}
+h1{margin:0 0 20px;font-size:clamp(2rem,1.3rem + 3vw,3.25rem);line-height:1.12;letter-spacing:-.01em}
+.lead{margin:0 0 28px;font-size:1.1875rem;color:var(--ink);max-width:36em}
+.cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.btn{display:inline-flex;flex-direction:column;justify-content:center;min-height:56px;padding:10px 24px;border-radius:16px;text-decoration:none;font-weight:700;font-size:1.0625rem;line-height:1.25;border:2px solid transparent}
+.btn small{font-weight:400;font-size:.8125rem;opacity:.92}
+.btn-primary{background:var(--red);color:var(--on-red)}
+.btn-primary:hover{filter:brightness(1.07)}
+.btn-ghost{color:var(--ink);border-color:var(--ink)}
+.btn-ghost:hover{background:var(--shade)}
+.btn:focus-visible{outline:3px solid var(--ice);outline-offset:3px}
+.facts{display:flex;flex-wrap:wrap;gap:8px;margin:28px 0 0;padding:0;list-style:none}
+.facts li{background:var(--paper-hi);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:.9375rem}
+.phone{width:min(300px,72vw);margin-inline:auto;border:10px solid var(--ink);border-radius:36px;overflow:hidden;background:var(--paper);box-shadow:var(--shadow)}
+.phone img{aspect-ratio:720/1180;width:100%;background:var(--paper-hi)}
+@media (prefers-color-scheme:dark){.phone{border-color:#2E3338}}
+`;
+const CSS_BELOW = `
+section{padding:64px 0;border-top:1px solid var(--line)}
+.alt{background:var(--paper-hi)}
+h2{margin:0 0 12px;font-size:clamp(1.625rem,1.2rem + 1.6vw,2.25rem);line-height:1.2}
+h2 .zh{color:var(--red);margin-inline-end:12px}
+h3{margin:0 0 8px;font-size:1.1875rem}
+.sub{margin:0 0 32px;color:var(--muted);max-width:44em}
+.steps{counter-reset:s;list-style:none;margin:0;padding:0;display:grid;gap:16px}
+@media (min-width:760px){.steps{grid-template-columns:repeat(2,1fr)}}
+@media (min-width:1100px){.steps.five{grid-template-columns:repeat(5,1fr)}}
+.steps li{counter-increment:s;background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:20px}
+.alt .steps li{background:var(--paper)}
+.steps li::before{content:counter(s);display:inline-grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--red-soft);color:var(--ink);font-weight:700;margin-bottom:10px}
+.steps p{margin:0;color:var(--muted)}
+.term{display:block;color:var(--red);font-size:.9375rem;margin-bottom:4px}
+.term .zh{font-size:1.25rem;margin-inline-end:6px}
+.cards{display:grid;gap:16px}
+@media (min-width:760px){.cards{grid-template-columns:repeat(2,1fr)}}
+.card{background:var(--paper-hi);border:1px solid var(--line);border-radius:20px;padding:24px}
+.card p{margin:0;color:var(--muted)}
+.card .glyph{float:inline-end;width:56px;height:56px;display:grid;place-items:center;border-radius:14px;background:var(--red-soft);font-size:2rem;margin-inline-start:12px}
+.gallery{list-style:none;margin:0;padding:0;display:grid;gap:32px;justify-items:center}
+@media (min-width:900px){.gallery{grid-template-columns:repeat(3,1fr)}}
+.gallery figure{margin:0;width:min(260px,80vw)}
+.gallery .phone{width:100%;border-width:8px;border-radius:30px}
+.gallery figcaption{margin-top:14px;text-align:center;color:var(--muted);font-size:.9375rem}
+.checks{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+@media (min-width:760px){.checks{grid-template-columns:repeat(2,1fr)}}
+.checks li{position:relative;padding-inline-start:30px}
+.checks li::before{content:"";position:absolute;inset-inline-start:4px;top:.45em;width:12px;height:7px;border-inline-start:3px solid var(--jade);border-bottom:3px solid var(--jade);transform:rotate(-45deg)}
+.dl{display:grid;gap:32px;align-items:start}
+@media (min-width:900px){.dl{grid-template-columns:1fr 1fr}}
+.meta{margin:24px 0 0;display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:.9375rem}
+.meta dt{color:var(--muted)}
+.meta dd{margin:0}
+.meta code{font-size:.8125rem;word-break:break-all}
+.note{background:var(--jade-soft);border-radius:16px;padding:16px 20px;margin:0}
+.donate{display:grid;gap:32px}
+@media (min-width:900px){.donate{grid-template-columns:1fr 1fr}}
+fieldset{border:1px solid var(--line);border-radius:20px;padding:20px;margin:0;background:var(--paper)}
+legend{font-weight:700;padding:0 8px}
+.amounts{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px;padding:0;border:0;background:none}
+.amounts legend{padding:0;margin-bottom:8px;font-weight:600;width:100%}
+.amounts label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 14px}
+.stub{margin:0 0 16px;padding:12px 16px;border-radius:12px;background:var(--red-soft);font-weight:600}
+button[disabled]{min-height:48px;padding:10px 24px;border-radius:14px;border:0;background:var(--shade);color:var(--muted);font:inherit;font-weight:700;cursor:not-allowed}
+details{border:1px solid var(--line);border-radius:16px;background:var(--paper-hi);margin-bottom:12px}
+summary{cursor:pointer;padding:16px 20px;font-weight:700}
+details p{margin:0;padding:0 20px 18px;color:var(--muted)}
+.site-footer{padding:40px 0 max(40px,env(safe-area-inset-bottom));border-top:1px solid var(--line);color:var(--muted);font-size:.9375rem}
+.site-footer p{margin:0 0 8px}
+`;
+const minCss = (s) => s.replace(/\n/g, '').replace(/\s*([{};:,>])\s*/g, '$1').replace(/;}/g, '}').trim();
+const STYLE = minCss(CSS + CSS_BELOW);
+const STYLE_HASH = crypto.createHash('sha256').update(STYLE, 'utf8').digest('base64');
+
+const HERO_SIZES = '(min-width: 417px) 300px, 72vw';
+const GALLERY_SIZES = '(min-width: 325px) 260px, 80vw';
+
+const ld = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': `${CANONICAL}#webpage`,
+    url: CANONICAL,
+    name: TITLE,
+    description: DESCRIPTION,
+    inLanguage: 'ru',
+    primaryImageOfPage: { '@type': 'ImageObject', url: abs(OG_IMG), width: 1200, height: 630 },
+    about: { '@id': `${CANONICAL}#app` },
+    author: { '@id': `${CANONICAL}#author` },
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'MobileApplication',
+    '@id': `${CANONICAL}#app`,
+    name: 'BergHanziTrainer',
+    description: DESCRIPTION,
+    url: CANONICAL,
+    image: abs('favicon.png'),
+    screenshot: [abs(shots.copybook.jpg.at(-1)[0]), abs(shots.trace.jpg.at(-1)[0]), abs(shots.lists.jpg.at(-1)[0])],
+    operatingSystem: `Android ${ANDROID_MIN}+`,
+    applicationCategory: 'EducationalApplication',
+    softwareVersion: VERSION,
+    ...(WITH_APK ? { fileSize: `${APK_MB} MB`, downloadUrl: APK_URL, installUrl: APK_URL } : {}),
+    inLanguage: 'ru',
+    isAccessibleForFree: true,
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'RUB' },
+    author: { '@id': `${CANONICAL}#author` },
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Person',
+    '@id': `${CANONICAL}#author`,
+    name: 'Bergshrund73',
+    url: GITHUB_PROFILE,
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    '@id': `${CANONICAL}#faq`,
+    mainEntity: FAQ.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+  },
+];
+
+const CSP = [
+  "default-src 'none'",
+  "img-src 'self'",
+  "connect-src 'self'",
+  `style-src 'sha256-${STYLE_HASH}'`,
+  "base-uri 'self'",
+  "form-action 'none'",
+  "object-src 'none'",
+].join('; ');
+
+const zh = (hanzi) => `<span class="zh" lang="zh-Hans">${esc(hanzi)}</span>`;
+const zhDeco = (hanzi) => `<span class="zh" lang="zh-Hans" aria-hidden="true">${esc(hanzi)}</span>`;
+
+const html = `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+<title>${esc(TITLE)}</title>
+<meta name="description" content="${esc(DESCRIPTION)}">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta http-equiv="Content-Security-Policy" content="${esc(CSP)}">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F4EFE6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141619" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="${esc(CANONICAL)}">
+<link rel="icon" type="image/png" sizes="96x96" href="${esc(abs('favicon.png'))}">
+<link rel="apple-touch-icon" href="${esc(abs('apple-touch-icon.png'))}">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:site_name" content="BergHanziTrainer">
+<meta property="og:title" content="${esc(TITLE)}">
+<meta property="og:description" content="${esc(DESCRIPTION)}">
+<meta property="og:url" content="${esc(CANONICAL)}">
+<meta property="og:image" content="${esc(abs(OG_IMG))}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Логотип BergHanziTrainer: иероглифы 山 и 冰, разделённые красной трещиной">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(TITLE)}">
+<meta name="twitter:description" content="${esc(DESCRIPTION)}">
+<meta name="twitter:image" content="${esc(abs(OG_IMG))}">
+<style>${STYLE}</style>
+</head>
+<body>
+<header class="site-header">
+<div class="container bar">
+<a class="brand" href="${esc(CANONICAL)}">${picture(logo, { alt: '', sizes: '40px', w: 48, h: 48, eager: true })}<span>BergHanziTrainer</span></a>
+<nav class="nav" aria-label="Разделы страницы">
+<a class="nav-extra" href="#how">Как учиться</a>
+<a class="nav-extra" href="#modes">Режимы</a>
+<a class="nav-extra" href="#donate">Поддержать</a>
+<a class="nav-cta" href="#download">Скачать</a>
+</nav>
+</div>
+</header>
+<main id="main">
+<div class="hero">
+<div class="container hero-grid">
+<div>
+<p class="kicker">${zh('写汉字')}xiě hànzì — «писать иероглифы»</p>
+<h1>Тренажёр написания китайских иероглифов для Android</h1>
+<p class="lead">BergHanziTrainer показывает порядок черт и учит писать иероглифы пальцем на экране — от обводки с подсказкой до письма по памяти. Бесплатно, без рекламы и без интернета.</p>
+<div class="cta">
+${WITH_APK
+  ? `<a class="btn btn-primary" href="${esc(APK_URL)}" download type="application/vnd.android.package-archive">Скачать APK<small>v${esc(VERSION)} · ${APK_MB}&nbsp;МБ · Android ${ANDROID_MIN}+</small></a>`
+  : `<a class="btn btn-primary" href="#download">Скачать APK<small>скоро · Android ${ANDROID_MIN}+</small></a>`}
+<a class="btn btn-ghost" href="#donate">Поддержать проект</a>
+</div>
+<ul class="facts">
+<li>${fmtInt(STROKE_CHARS)} иероглифов с порядком черт</li>
+<li>4 режима тренировки</li>
+<li>6 стартовых списков слов</li>
+</ul>
+</div>
+<div class="phone">${picture(shots.copybook, { alt: 'Экран прописи: приложение по одной черте показывает порядок написания иероглифа 我', sizes: HERO_SIZES, w: SHOT.w, h: SHOT.h, lcp: true })}</div>
+</div>
+</div>
+<section id="how" class="alt" aria-labelledby="how-title">
+<div class="container">
+<h2 id="how-title">${zhDeco('笔顺')}Как проходит тренировка</h2>
+<p class="sub">В режиме «Пропись» каждый иероглиф проходит путь от показа до письма по памяти. Подсказок становится меньше с каждым раундом.</p>
+<ol class="steps five">
+<li><span class="term">${zh('笔顺')}bǐshùn</span><h3>Показ порядка черт</h3><p>Иероглиф рисуется по одной черте, рядом — лента со всеми шагами. Тап по клетке пропускает показ.</p></li>
+<li><span class="term">${zh('描红')}miáohóng</span><h3>Обводка с подсказкой</h3><p>Вы обводите иероглиф по контуру. Ошиблись — приложение сразу покажет, как провести черту.</p></li>
+<li><h3>Обводка</h3><p>Контур тот же, но подсказка появляется только после ошибки.</p></li>
+<li><h3>Частичная опора</h3><p>Целого контура больше нет — видна лишь следующая черта.</p></li>
+<li><span class="term">${zh('默写')}mòxiě</span><h3>По памяти</h3><p>Пустая клетка с сеткой ${zh('田')} и без ленты порядка черт. Слово из нескольких иероглифов в конце пишется целиком.</p></li>
+</ol>
+</div>
+</section>
+<section id="modes" aria-labelledby="modes-title">
+<div class="container">
+<h2 id="modes-title">${zhDeco('模式')}Четыре режима</h2>
+<p class="sub">Режим выбирается на экране списков и запоминается.</p>
+<div class="cards">
+<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">描</span><h3>Пропись</h3><p>Пошаговое обучение новому иероглифу: показ порядка черт и четыре раунда с убывающей подсказкой.</p></article>
+<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">字</span><h3>Иероглифы</h3><p>Видите перевод и пиньинь — пишете иероглиф. Кнопка «Подсказка» покажет контур, если забыли.</p></article>
+<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">拼</span><h3>Иероглифы и пиньинь</h3><p>Кроме иероглифа нужно ввести чтение. Тон — цифрой после слога или кнопкой: <span lang="zh-Latn-pinyin">nv3 → nǚ</span>.</p></article>
+<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">考</span><h3>Тест</h3><p>Без подсказок, с подсчётом ошибок. В конце — итог: сколько слов пройдено чисто и где были ошибки.</p></article>
+</div>
+</div>
+</section>
+<section id="screens" class="alt" aria-labelledby="screens-title">
+<div class="container">
+<h2 id="screens-title">${zhDeco('界面')}Как это выглядит</h2>
+<p class="sub">Спокойная тема «рисовая бумага»: тушь, киноварь и сетка 田 для каждого иероглифа. Тёмная тема включается вместе с системной.</p>
+<ul class="gallery">
+<li><figure><div class="phone">${picture(shots.trace, { alt: 'Раунд обводки: контур иероглифа 我 и подсвеченная черта, которую нужно провести', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Обводка с подсказкой следующей черты</figcaption></figure></li>
+<li><figure><div class="phone">${picture(shots.lists, { alt: 'Экран списков: выбор режима тренировки и списки «Местоимения», «Глаголы», «Прилагательные»', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Списки и выбор режима</figcaption></figure></li>
+<li><figure><div class="phone">${picture(shots.words, { alt: 'Список «Местоимения»: иероглифы 我, 你, 他, 她 с пиньинем и переводом', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Слова с пиньинем и переводом</figcaption></figure></li>
+</ul>
+</div>
+</section>
+<section id="lists" aria-labelledby="lists-title">
+<div class="container">
+<h2 id="lists-title">${zhDeco('词表')}Свои списки слов</h2>
+<p class="sub">Учите то, что нужно именно вам: по учебнику, по курсу или из своего словаря.</p>
+<ul class="checks">
+<li>6 стартовых списков: местоимения, глаголы, прилагательные, семья и люди, места, еда и напитки</li>
+<li>Свои списки и слова: иероглифы, пиньинь, перевод</li>
+<li>Импорт из Pleco, Anki и Excel — файлы .txt, .csv, .tsv или вставка текста</li>
+<li>Выгрузка списка для Pleco и в JSON для другого телефона</li>
+<li>Резервная копия всех слов, списков и прогресса одним файлом</li>
+<li>Поиск по переводу, иероглифам и пиньиню</li>
+</ul>
+</div>
+</section>
+<section id="download" class="alt" aria-labelledby="download-title">
+<div class="container dl">
+<div>
+<h2 id="download-title">${zhDeco('下载')}Скачать BergHanziTrainer</h2>
+${WITH_APK
+  ? `<p class="sub">Приложение распространяется файлом APK. Установка занимает минуту.</p>
+<a class="btn btn-primary" href="${esc(APK_URL)}" download type="application/vnd.android.package-archive">Скачать APK<small>${esc(APK_NAME)} · ${APK_MB}&nbsp;МБ</small></a>`
+  : `<p class="sub">Приложение будет распространяться файлом APK. Установка займёт минуту.</p>
+<p class="stub">Скачивание скоро появится на этой странице.</p>
+<button type="button" disabled>Скачать APK</button>`}
+<dl class="meta">
+<dt>Версия</dt><dd>${esc(VERSION)}</dd>
+<dt>Android</dt><dd>${ANDROID_MIN} и новее</dd>
+${WITH_APK ? `<dt>Размер</dt><dd>${APK_MB}&nbsp;МБ</dd>
+<dt>SHA-256</dt><dd><code>${esc(APK_SHA256)}</code></dd>` : ''}
+</dl>
+</div>
+<div>
+<ol class="steps">
+<li><h3>Скачайте файл</h3><p>Нажмите «Скачать APK» на телефоне с Android.</p></li>
+<li><h3>Откройте его</h3><p>Из уведомления о загрузке или из папки «Загрузки».</p></li>
+<li><h3>Разрешите установку</h3><p>Android один раз спросит, можно ли устанавливать приложения из этого источника.</p></li>
+<li><h3>Готово</h3><p>Стартовые списки уже на месте — можно писать первый иероглиф.</p></li>
+</ol>
+</div>
+</div>
+</section>
+<section id="donate" aria-labelledby="donate-title">
+<div class="container donate">
+<div>
+<h2 id="donate-title">${zhDeco('支持')}Поддержать проект</h2>
+<p class="sub">BergHanziTrainer — частная разработка без рекламы и подписок. Донаты помогают выделять время на новые режимы и списки слов.</p>
+<p class="note">Спасибо, что пользуетесь приложением! ${zh('谢谢')}</p>
+</div>
+<form aria-labelledby="donate-form-title">
+<fieldset disabled>
+<legend id="donate-form-title">Донат</legend>
+<p class="stub">Приём донатов скоро появится на этой странице.</p>
+<fieldset class="amounts"><legend>Сумма</legend>
+<label><input type="radio" name="amount" value="100">100&nbsp;₽</label>
+<label><input type="radio" name="amount" value="300">300&nbsp;₽</label>
+<label><input type="radio" name="amount" value="500">500&nbsp;₽</label>
+</fieldset>
+<button type="submit" disabled>Поддержать</button>
+</fieldset>
+</form>
+</div>
+</section>
+<section id="faq" class="alt" aria-labelledby="faq-title">
+<div class="container">
+<h2 id="faq-title">${zhDeco('问答')}Вопросы и ответы</h2>
+${FAQ.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('\n')}
+</div>
+</section>
+</main>
+<footer class="site-footer">
+<div class="container">
+<p>© 2026 BergHanziTrainer · частная разработка <a href="${esc(GITHUB_PROFILE)}">Bergshrund73</a></p>
+<p>Данные о порядке черт — <a href="https://github.com/skishore/makemeahanzi">Make Me a Hanzi</a> (Arphic Public License, LGPL). Иероглифы логотипа — шрифт Ma Shan Zheng (SIL Open Font License 1.1).</p>
+</div>
+</footer>
+${ld.map((o) => `<script type="application/ld+json">${jsonLd(o)}</script>`).join('\n')}
+</body>
+</html>
+`;
+
+const minHtml = html.replace(/>\s*\n\s*</g, '><').replace(/\n/g, ' ').trim() + '\n';
+fs.writeFileSync(path.join(OUT, 'index.html'), minHtml);
+fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
+fs.writeFileSync(path.join(OUT, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${abs('sitemap.xml')}\n`);
+const xmlEsc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]);
+fs.writeFileSync(path.join(OUT, 'sitemap.xml'),
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${xmlEsc(CANONICAL)}</loc></url>\n</urlset>\n`);
+
+console.log(JSON.stringify({ out: OUT, base: BASE, version: VERSION, apk: WITH_APK ? APK_NAME : 'stub', apkMB: APK_MB, sha256: APK_SHA256, strokeChars: STROKE_CHARS, htmlBytes: Buffer.byteLength(minHtml), cssBytes: STYLE.length, og: OG_IMG }, null, 1));
