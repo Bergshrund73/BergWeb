@@ -179,6 +179,10 @@ h1{margin:0 0 20px;font-size:clamp(2rem,1.3rem + 3vw,3.25rem);line-height:1.12;l
 .cta{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
 .btn{display:inline-flex;flex-direction:column;justify-content:center;min-height:56px;padding:10px 24px;border-radius:16px;text-decoration:none;font-weight:700;font-size:1.0625rem;line-height:1.25;border:2px solid transparent}
 .btn small{font-weight:400;font-size:.8125rem;opacity:.92}
+.btn-dl{flex-direction:row;align-items:center;gap:14px;padding-inline:20px 26px}
+.btn-dl svg{flex:none;width:28px;height:28px}
+.btn-dl span{display:flex;flex-direction:column}
+.btn-big{min-height:64px;font-size:1.1875rem}
 .btn-primary{background:var(--red);color:var(--on-red)}
 .btn-primary:hover{filter:brightness(1.07)}
 .btn-ghost{color:var(--ink);border-color:var(--ink)}
@@ -227,6 +231,18 @@ h3{margin:0 0 8px;font-size:1.1875rem}
 .meta dd{margin:0}
 .meta code{font-size:.8125rem;word-break:break-all}
 .note{background:var(--jade-soft);border-radius:16px;padding:16px 20px;margin:0}
+.hint{margin:12px 0 0;color:var(--muted);font-size:.9375rem}
+.new{margin:28px 0 0}
+.new h3{font-size:1.0625rem}
+.new .checks{grid-template-columns:1fr}
+.modes-h{margin:32px 0 16px;font-size:1.0625rem;color:var(--muted)}
+.opts{display:grid;gap:16px}
+@media (min-width:760px){.opts{grid-template-columns:repeat(2,1fr)}}
+.opt{border:1px dashed var(--muted);border-radius:20px;padding:20px 24px}
+.opt h3{display:flex;align-items:center;gap:10px}
+.opt p{margin:0;color:var(--muted)}
+.sw{flex:none;width:36px;height:22px;border-radius:999px;background:var(--red);position:relative}
+.sw::after{content:"";position:absolute;top:4px;inset-inline-end:4px;width:14px;height:14px;border-radius:50%;background:var(--on-red)}
 .donate{display:grid;gap:32px}
 @media (min-width:900px){.donate{grid-template-columns:1fr 1fr}}
 fieldset{border:1px solid var(--line);border-radius:20px;padding:20px;margin:0;background:var(--paper)}
@@ -305,6 +321,16 @@ const CSP = [
   "object-src 'none'",
 ].join('; ');
 
+const DL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M11 3h2v9.17l3.59-3.58L18 10l-6 6-6-6 1.41-1.41L11 12.17V3zM5 18h14v2H5z"/></svg>';
+const dlButton = (detail, cls = '') => `<a class="btn btn-primary btn-dl${cls}" href="${esc(APK_URL)}" download="${esc(APK_NAME)}" type="application/vnd.android.package-archive">${DL_ICON}<span>Скачать APK<small>${detail}</small></span></a>`;
+// What changed in the published version, shown under the download button.
+const WHATS_NEW = [
+  'Тренировка настраивается по-новому: «Пропись» или «Письмо» плюс переключатели «Пиньинь» и «Тест»',
+  'Тест можно пройти без пиньиня и на 5, 10 или всех случайных словах списка',
+  'Системный список «Ключи»: 214 ключей Канси с вариантами форм (⺮, 亻, 氵…)',
+  'Новое слово сразу добавляется в несколько списков, у сохранённого слова списки можно поменять',
+  'Свои списки идут сверху, новые первыми; общий список теперь называется «Все слова»',
+];
 const zh = (hanzi) => `<span class="zh" lang="zh-Hans">${esc(hanzi)}</span>`;
 const zhDeco = (hanzi) => `<span class="zh" lang="zh-Hans" aria-hidden="true">${esc(hanzi)}</span>`;
 
@@ -361,13 +387,13 @@ const html = `<!doctype html>
 <p class="lead">BergHanziTrainer показывает порядок черт и учит писать иероглифы пальцем на экране — от обводки с подсказкой до письма по памяти. Бесплатно, без рекламы и без интернета.</p>
 <div class="cta">
 ${WITH_APK
-  ? `<a class="btn btn-primary" href="${esc(APK_URL)}" download type="application/vnd.android.package-archive">Скачать APK<small>v${esc(VERSION)} · ${APK_MB}&nbsp;МБ · Android ${ANDROID_MIN}+</small></a>`
+  ? dlButton(`v${esc(VERSION)} · ${APK_MB}&nbsp;МБ · Android ${ANDROID_MIN}+`)
   : `<a class="btn btn-primary" href="#download">Скачать APK<small>скоро · Android ${ANDROID_MIN}+</small></a>`}
 <a class="btn btn-ghost" href="#donate">Поддержать проект</a>
 </div>
 <ul class="facts">
 <li>${fmtInt(STROKE_CHARS)} иероглифов с порядком черт</li>
-<li>4 режима тренировки</li>
+<li>Пропись, письмо и тест</li>
 <li>6 стартовых списков слов</li>
 </ul>
 </div>
@@ -389,13 +415,16 @@ ${WITH_APK
 </section>
 <section id="modes" aria-labelledby="modes-title">
 <div class="container">
-<h2 id="modes-title">${zhDeco('模式')}Четыре режима</h2>
-<p class="sub">Режим выбирается на экране списков и запоминается.</p>
+<h2 id="modes-title">${zhDeco('模式')}Режимы тренировки</h2>
+<p class="sub">Выберите, как учить слова, и включите нужные переключатели. Настройки открываются кнопкой над словами списка и запоминаются.</p>
 <div class="cards">
-<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">描</span><h3>Пропись</h3><p>Пошаговое обучение новому иероглифу: показ порядка черт и четыре раунда с убывающей подсказкой.</p></article>
-<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">字</span><h3>Иероглифы</h3><p>Видите перевод и пиньинь — пишете иероглиф. Кнопка «Подсказка» покажет контур, если забыли.</p></article>
-<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">拼</span><h3>Иероглифы и пиньинь</h3><p>Кроме иероглифа нужно ввести чтение. Тон — цифрой после слога или кнопкой: <span lang="zh-Latn-pinyin">nv3 → nǚ</span>.</p></article>
-<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">考</span><h3>Тест</h3><p>Без подсказок, с подсчётом ошибок. В конце — итог: сколько слов пройдено чисто и где были ошибки.</p></article>
+<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">描</span><h3>Пропись</h3><p>Пошаговое обучение новому иероглифу: показ порядка черт → обводка → по памяти → слово целиком.</p></article>
+<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">字</span><h3>Письмо</h3><p>Видите перевод и пиньинь — пишете иероглифы. Кнопка «Подсказка» покажет контур, если забыли.</p></article>
+</div>
+<h3 class="modes-h">Переключатели для «Письма» — по отдельности или вместе</h3>
+<div class="opts">
+<article class="opt"><h3><span class="sw" aria-hidden="true"></span>Пиньинь</h3><p>Чтение скрыто — его нужно ввести после иероглифов. Тон — цифрой после слога или кнопкой: <span lang="zh-Latn-pinyin">nv3 → nǚ</span>.</p></article>
+<article class="opt"><h3><span class="sw" aria-hidden="true"></span>Тест</h3><p>Без подсказок, слова вперемешку, ошибки считаются. Проверьте 5, 10 или все слова списка — в конце итог: что написано чисто и где были ошибки.</p></article>
 </div>
 </div>
 </section>
@@ -405,7 +434,7 @@ ${WITH_APK
 <p class="sub">Спокойная тема «рисовая бумага»: тушь, киноварь и сетка 田 для каждого иероглифа. Тёмная тема включается вместе с системной.</p>
 <ul class="gallery">
 <li><figure><div class="phone">${picture(shots.trace, { alt: 'Раунд обводки: контур иероглифа 我 и подсвеченная черта, которую нужно провести', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Обводка с подсказкой следующей черты</figcaption></figure></li>
-<li><figure><div class="phone">${picture(shots.lists, { alt: 'Экран списков: выбор режима тренировки и списки «Местоимения», «Глаголы», «Прилагательные»', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Списки и выбор режима</figcaption></figure></li>
+<li><figure><div class="phone">${picture(shots.lists, { alt: 'Экран списков: карточки списков «Местоимения», «Глаголы», «Прилагательные»', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Ваши списки слов</figcaption></figure></li>
 <li><figure><div class="phone">${picture(shots.words, { alt: 'Список «Местоимения»: иероглифы 我, 你, 他, 她 с пиньинем и переводом', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Слова с пиньинем и переводом</figcaption></figure></li>
 </ul>
 </div>
@@ -416,7 +445,8 @@ ${WITH_APK
 <p class="sub">Учите то, что нужно именно вам: по учебнику, по курсу или из своего словаря.</p>
 <ul class="checks">
 <li>6 стартовых списков: местоимения, глаголы, прилагательные, семья и люди, места, еда и напитки</li>
-<li>Свои списки и слова: иероглифы, пиньинь, перевод</li>
+<li>Системный список «Ключи»: 214 ключей Канси с вариантами форм</li>
+<li>Свои списки и слова: иероглифы, пиньинь, перевод; одно слово — сразу в нескольких списках</li>
 <li>Импорт из Pleco, Anki и Excel — файлы .txt, .csv, .tsv или вставка текста</li>
 <li>Выгрузка списка для Pleco и в JSON для другого телефона</li>
 <li>Резервная копия всех слов, списков и прогресса одним файлом</li>
@@ -429,8 +459,9 @@ ${WITH_APK
 <div>
 <h2 id="download-title">${zhDeco('下载')}Скачать BergHanziTrainer</h2>
 ${WITH_APK
-  ? `<p class="sub">Приложение распространяется файлом APK. Установка занимает минуту.</p>
-<a class="btn btn-primary" href="${esc(APK_URL)}" download type="application/vnd.android.package-archive">Скачать APK<small>${esc(APK_NAME)} · ${APK_MB}&nbsp;МБ</small></a>`
+  ? `<p class="sub">Приложение распространяется файлом APK. Установка занимает минуту, новая версия ставится поверх старой — слова и прогресс сохраняются.</p>
+${dlButton(`версия ${esc(VERSION)} · ${APK_MB}&nbsp;МБ`, ' btn-big')}
+<p class="hint">Открыли страницу на компьютере? Откройте её на телефоне или перенесите скачанный файл по кабелю.</p>`
   : `<p class="sub">Приложение будет распространяться файлом APK. Установка займёт минуту.</p>
 <p class="stub">Скачивание скоро появится на этой странице.</p>
 <button type="button" disabled>Скачать APK</button>`}
@@ -440,6 +471,12 @@ ${WITH_APK
 ${WITH_APK ? `<dt>Размер</dt><dd>${APK_MB}&nbsp;МБ</dd>
 <dt>SHA-256</dt><dd><code>${esc(APK_SHA256)}</code></dd>` : ''}
 </dl>
+<div class="new">
+<h3>Что нового в ${esc(VERSION)}</h3>
+<ul class="checks">
+${WHATS_NEW.map((t) => `<li>${esc(t)}</li>`).join('\n')}
+</ul>
+</div>
 </div>
 <div>
 <ol class="steps">
