@@ -48,6 +48,8 @@ const fmtInt = (n) => n.toLocaleString('ru-RU').replace(/\s/g, ' ');
 // ---------- output dirs ----------
 fs.rmSync(path.join(OUT, 'images'), { recursive: true, force: true });
 fs.rmSync(path.join(OUT, 'download'), { recursive: true, force: true });
+fs.rmSync(path.join(OUT, 'assets'), { recursive: true, force: true });
+fs.mkdirSync(path.join(OUT, 'assets'), { recursive: true });
 fs.mkdirSync(path.join(OUT, 'images'), { recursive: true });
 if (WITH_APK) {
   fs.mkdirSync(path.join(OUT, 'download'), { recursive: true });
@@ -117,6 +119,35 @@ const og = await sharp({ create: { width: 1200, height: 630, channels: 3, backgr
   .composite([{ input: await renderLogo(400), left: 80, top: 115 }, { input: ogText, left: 0, top: 0 }])
   .jpeg({ quality: 85, mozjpeg: true }).toBuffer();
 const OG_IMG = emit(og, 'og-cover', 'jpg');
+
+// ---------- "try it" demo: first words of the first starter list + their stroke data ----------
+const DEMO_WORDS = 5;
+const starter = JSON.parse(fs.readFileSync(path.join(REPO, 'app/src/main/assets/starter_lists/1_pronouns.json'), 'utf8'));
+const DEMO_LIST = starter.lists[0].name;
+const demoWords = starter.words.slice(0, DEMO_WORDS).map((w) => ({ hz: w.hanzi, py: w.pinyin, ru: w.translationRu }));
+const demoChars = new Set(demoWords.flatMap((w) => Array.from(w.hz)));
+const demoStrokes = {};
+for (const line of fs.readFileSync(path.join(REPO, 'app/src/main/assets/makemeahanzi/graphics.txt'), 'utf8').split('\n')) {
+  if (!line.trim()) continue;
+  const g = JSON.parse(line);
+  if (!demoChars.has(g.character)) continue;
+  demoStrokes[g.character] = {
+    s: g.strokes.map((d) => d.replace(/(\d+)\.\d+/g, '$1')),
+    m: g.medians.map((m) => m.map(([x, y]) => [+(x / 1024).toFixed(3), +((900 - y) / 1024).toFixed(3)])),
+  };
+}
+for (const c of demoChars) if (!demoStrokes[c]) throw new Error(`No stroke data for demo character ${c}`);
+function emitAsset(buf, base, ext) {
+  const name = `assets/${base}.${hash8(buf)}.${ext}`;
+  fs.writeFileSync(path.join(OUT, name), buf);
+  return name;
+}
+const DEMO_DATA = emitAsset(Buffer.from(JSON.stringify({ words: demoWords, chars: demoStrokes })), 'demo-hanzi', 'json');
+// Light minification: drop comment lines and indentation.
+const demoJs = fs.readFileSync(path.join(HERE, 'demo.js'), 'utf8')
+  .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('//')).join('\n');
+if (Buffer.byteLength(demoJs) > 15 * 1024) throw new Error(`demo.js is ${Buffer.byteLength(demoJs)} bytes, over the 15 KB budget`);
+const DEMO_JS = emitAsset(Buffer.from(demoJs), 'demo', 'js');
 
 // ---------- markup helpers ----------
 const srcset = (list) => list.map(([f, w]) => `${abs(f)} ${w}w`).join(', ');
@@ -257,6 +288,67 @@ summary{cursor:pointer;padding:16px 20px;font-weight:700}
 details p{margin:0;padding:0 20px 18px;color:var(--muted)}
 .site-footer{padding:40px 0 max(40px,env(safe-area-inset-bottom));border-top:1px solid var(--line);color:var(--muted);font-size:.9375rem}
 .site-footer p{margin:0 0 8px}
+[hidden]{display:none!important}
+.demo{display:grid;gap:20px}
+.demo h3{margin:0 0 16px}
+.demo button{font:inherit;cursor:pointer}
+.demo button:focus-visible,.demo a:focus-visible{outline:3px solid var(--ice);outline-offset:3px}
+.demo-steps{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.demo-steps li{display:inline-flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border:1px solid var(--line);border-radius:999px;font-size:.9375rem;color:var(--muted)}
+.demo-steps li span{width:28px;height:28px;display:grid;place-items:center;border-radius:50%;background:var(--shade);font-weight:700}
+.demo-steps li.on{color:var(--ink)}
+.demo-steps li.on span{background:var(--red);color:var(--on-red)}
+.demo-steps li[aria-current]{background:var(--paper-hi);font-weight:700}
+.demo-card{background:var(--paper-hi);border:1px solid var(--line);border-radius:24px;padding:clamp(20px,3vw,40px);min-height:420px}
+.demo-lists{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.demo-list{display:flex;align-items:center;gap:14px;padding:14px;min-height:84px;border-radius:18px;border:1px solid var(--red);background:var(--paper-hi);color:var(--ink);text-align:start;box-shadow:0 6px 18px rgba(179,54,43,.12)}
+.demo-list .zh{flex:none;width:56px;height:56px;display:grid;place-items:center;border-radius:14px;background:var(--red-soft);font-size:1.875rem}
+.demo-list b{display:block;font-size:1.0625rem}
+.demo-list small{display:block;color:var(--muted);font-size:.9375rem}
+.demo-list[disabled]{min-height:84px;padding:14px;border-radius:18px;border:1px solid var(--line);background:var(--paper);box-shadow:none;color:var(--muted);font-weight:400}
+.demo-list[disabled] .zh{background:var(--shade)}
+.demo-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.demo-head h3{margin:0}
+.demo-back{min-height:44px;padding:8px 16px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink)}
+.demo-modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.demo-mode{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:10px 12px;text-align:start;padding:24px;border-radius:20px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+.demo-mode:hover,.demo-list:not([disabled]):hover{border-color:var(--red)}
+.demo-mode .zh{width:52px;height:52px;display:grid;place-items:center;border-radius:14px;background:var(--red-soft);font-size:1.75rem}
+.demo-mode b{font-size:1.1875rem}
+.demo-mode small{grid-column:1/-1;color:var(--muted);font-size:1rem;line-height:1.55}
+.demo-write{display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start}
+.demo-info{flex:1 1 280px;min-width:0;display:flex;flex-direction:column;gap:16px;align-items:flex-start}
+.demo-info .demo-head{margin:0}
+.demo-muted{color:var(--muted)}
+.demo-word{margin:0;display:flex;flex-direction:column}
+.demo-word span:first-child{font-size:2.5rem;font-weight:800;line-height:1.1}
+.demo-word .demo-muted{font-size:1.25rem}
+.demo-chars{display:flex;gap:8px;flex-wrap:wrap}
+.demo-char{width:48px;height:48px;display:grid;place-items:center;border-radius:12px;border:2px solid var(--line);background:var(--paper-hi);color:var(--muted);font-size:1.75rem;font-family:"KaiTi","STKaiti","Kaiti SC","Noto Serif CJK SC","Songti SC","SimSun",serif}
+.demo-char.shown{background:var(--jade-soft);color:var(--ink)}
+.demo-char.current{border-color:var(--red)}
+.demo-status{margin:0;align-self:stretch;padding:12px 16px;border-radius:14px;background:var(--shade);font-weight:600}
+.demo-status.ok{background:var(--jade-soft)}
+.demo-status.bad{background:var(--red-soft)}
+.demo-meter{align-self:stretch;display:grid;gap:6px;font-size:.9375rem}
+.demo-meter>div:first-child{display:flex;justify-content:space-between}
+.demo-bar{height:6px;border-radius:999px;background:var(--shade);overflow:hidden}
+.demo-bar div{height:100%;width:0;background:var(--jade);border-radius:999px}
+@media (prefers-reduced-motion:no-preference){.demo-bar div{transition:width .25s}}
+.demo-actions{display:flex;gap:12px;flex-wrap:wrap}
+.demo-primary{display:inline-flex;align-items:center;min-height:52px;padding:10px 24px;border-radius:16px;border:0;background:var(--red);color:var(--on-red);font-weight:700;text-decoration:none}
+.demo-secondary{min-height:48px;padding:10px 20px;border-radius:14px;border:2px solid var(--ink);background:transparent;color:var(--ink);font-weight:700}
+.demo-pad{flex:0 1 380px;min-width:260px;width:100%;margin-inline:auto;display:grid;gap:12px}
+.demo-cell{position:relative;aspect-ratio:1;border-radius:20px;background:#FFFDF8;border:1px solid var(--line);overflow:hidden;box-shadow:var(--shadow)}
+.demo-cell::before,.demo-cell::after{content:"";position:absolute;pointer-events:none}
+.demo-cell::before{left:50%;top:0;bottom:0;border-left:1px dashed #E8C4BC}
+.demo-cell::after{top:50%;left:0;right:0;border-top:1px dashed #E8C4BC}
+.demo-cell canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.demo-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.demo-tools button{min-height:48px;border-radius:14px;border:0;background:var(--shade);color:var(--ink);font-weight:600}
+.demo-tools [aria-pressed="true"]{background:var(--red-soft);box-shadow:inset 0 0 0 2px var(--red)}
+.demo-big{margin:0;font-size:4rem;line-height:1;color:var(--jade)}
+.demo-note{color:var(--red)}
 `;
 const minCss = (s) => s.replace(/\n/g, '').replace(/\s*([{};:,>])\s*/g, '$1').replace(/;}/g, '}').trim();
 const STYLE = minCss(CSS + CSS_BELOW);
@@ -315,6 +407,7 @@ const CSP = [
   "default-src 'none'",
   "img-src 'self'",
   "connect-src 'self'",
+  "script-src 'self'",
   `style-src 'sha256-${STYLE_HASH}'`,
   "base-uri 'self'",
   "form-action 'none'",
@@ -400,6 +493,58 @@ ${WITH_APK
 <div class="phone">${picture(shots.copybook, { alt: 'Экран прописи: приложение по одной черте показывает порядок написания иероглифа 我', sizes: HERO_SIZES, w: SHOT.w, h: SHOT.h, lcp: true })}</div>
 </div>
 </div>
+<section id="try" aria-labelledby="try-title">
+<div class="container">
+<h2 id="try-title">${zhDeco('试一试')}Попробуйте прямо в браузере</h2>
+<p class="sub">Откройте стартовый список, выберите режим и напишите иероглиф мышкой или пальцем. Каждая черта проверяется сразу — так же, как в приложении.</p>
+<div class="demo" data-screen="list" data-hanzi="${esc(abs(DEMO_DATA))}">
+<ol class="demo-steps" aria-label="Шаги демо">
+<li class="on" aria-current="step"><span>1</span>Список</li>
+<li><span>2</span>Режим</li>
+<li><span>3</span>Пишите</li>
+</ol>
+<div class="demo-card">
+<div class="demo-screen" data-screen="list">
+<h3>Выберите список</h3>
+<div class="demo-lists">
+<button type="button" class="demo-list" data-action="open"><span class="zh" lang="zh-Hans" aria-hidden="true">${esc(Array.from(demoWords[0].hz)[0])}</span><span><b>${esc(DEMO_LIST)}</b><small>${DEMO_WORDS} слов · открыт в демо</small></span></button>
+${[['是', 'Глаголы'], ['大', 'Прилагательные'], ['爸', 'Семья и люди'], ['家', 'Места'], ['茶', 'Еда и напитки']].map(([g, t]) => `<button type="button" class="demo-list" disabled><span class="zh" lang="zh-Hans" aria-hidden="true">${g}</span><span><b>${t}</b><small>в приложении</small></span></button>`).join('\n')}
+</div>
+<p class="demo-note" data-out="load-error" hidden>Не удалось загрузить демо. Обновите страницу и попробуйте ещё раз.</p>
+<noscript><p class="stub">Для демо нужен включённый JavaScript.</p></noscript>
+</div>
+<div class="demo-screen" data-screen="mode" hidden>
+<div class="demo-head"><button type="button" class="demo-back" data-action="lists">← Списки</button><h3>${esc(DEMO_LIST)}: выберите режим</h3></div>
+<div class="demo-modes">
+<button type="button" class="demo-mode" data-action="mode" data-mode="trace"><span class="zh" lang="zh-Hans" aria-hidden="true">描</span><b>Обводка</b><small>Иероглиф виден бледным контуром — обведите его черта за чертой. Ошиблись — подсветим нужную черту.</small></button>
+<button type="button" class="demo-mode" data-action="mode" data-mode="memory"><span class="zh" lang="zh-Hans" aria-hidden="true">默</span><b>По памяти</b><small>Пустая клетка: только перевод и пиньинь. После двух ошибок появится подсказка.</small></button>
+</div>
+</div>
+<div class="demo-screen demo-write" data-screen="write" hidden>
+<div class="demo-info">
+<div class="demo-head"><button type="button" class="demo-back" data-action="modes">← Режим</button><span class="demo-muted" data-out="progress"></span></div>
+<p class="demo-word"><span data-out="ru"></span><span class="demo-muted" data-out="py"></span></p>
+<div class="demo-chars" data-out="cells"></div>
+<p class="demo-status" role="status" data-out="status"></p>
+<div class="demo-meter"><div class="demo-muted"><span data-out="stroke"></span><span data-out="errs"></span></div><div class="demo-bar" aria-hidden="true"><div data-out="bar"></div></div></div>
+<div class="demo-actions" data-out="char-done" hidden><button type="button" class="demo-primary" data-action="next">Дальше</button><button type="button" class="demo-secondary" data-action="retry">Написать ещё раз</button></div>
+<button type="button" class="demo-secondary" data-action="demo">Показать порядок черт</button>
+</div>
+<div class="demo-pad">
+<div class="demo-cell"><canvas width="760" height="760" aria-label="Клетка для письма"></canvas></div>
+<div class="demo-tools"><button type="button" data-action="undo">Отменить</button><button type="button" data-action="retry">Заново</button><button type="button" data-action="hint" aria-pressed="false">Подсказка</button></div>
+</div>
+</div>
+<div class="demo-screen" data-screen="done" hidden>
+<p class="demo-big zh" lang="zh-Hans" aria-hidden="true">好</p>
+<h3>Список пройден!</h3>
+<p class="demo-muted">В приложении вас ждут прописи в четыре раунда, режим «Тест» с подсчётом ошибок, свои списки слов и ещё пять стартовых списков.</p>
+<div class="demo-actions"><a class="demo-primary" href="#download">Скачать приложение</a><button type="button" class="demo-secondary" data-action="restart">Пройти ещё раз</button></div>
+</div>
+</div>
+</div>
+</div>
+</section>
 <section id="how" class="alt" aria-labelledby="how-title">
 <div class="container">
 <h2 id="how-title">${zhDeco('笔顺')}Как проходит тренировка</h2>
@@ -523,6 +668,7 @@ ${FAQ.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></de
 </div>
 </footer>
 ${ld.map((o) => `<script type="application/ld+json">${jsonLd(o)}</script>`).join('\n')}
+<script src="${esc(abs(DEMO_JS))}" defer></script>
 </body>
 </html>
 `;

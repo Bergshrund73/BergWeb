@@ -6,7 +6,7 @@ const [dir = '../docs', base = 'https://bergshrund73.github.io/BergWeb/'] = proc
 const html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
 let fail = 0;
 const urls = new Set();
-for (const m of html.matchAll(/\s(?:src|href|content)="([^"]+)"/g)) urls.add(m[1]);
+for (const m of html.matchAll(/\s(?:src|href|content|data-hanzi)="([^"]+)"/g)) urls.add(m[1]);
 for (const m of html.matchAll(/\s(?:srcset|imagesrcset)="([^"]+)"/g)) m[1].split(',').forEach((c) => urls.add(c.trim().split(/\s+/)[0]));
 let local = 0;
 for (const u of urls) {
