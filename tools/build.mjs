@@ -516,8 +516,8 @@ ${[['是', 'Глаголы'], ['大', 'Прилагательные'], ['爸', '
 <div class="demo-screen" data-screen="mode" hidden>
 <div class="demo-head"><button type="button" class="demo-back" data-action="lists">← Списки</button><h3>${esc(DEMO_LIST)}: выберите режим</h3></div>
 <div class="demo-modes">
-<button type="button" class="demo-mode" data-action="mode" data-mode="trace"><span class="zh" lang="zh-Hans" aria-hidden="true">描</span><b>Обводка</b><small>Иероглиф виден бледным контуром — обведите его черта за чертой. Ошиблись — подсветим нужную черту.</small></button>
-<button type="button" class="demo-mode" data-action="mode" data-mode="memory"><span class="zh" lang="zh-Hans" aria-hidden="true">默</span><b>По памяти</b><small>Пустая клетка: только перевод и пиньинь. После двух ошибок появится подсказка.</small></button>
+<button type="button" class="demo-mode" data-action="mode" data-mode="trace"><span class="zh" lang="zh-Hans" aria-hidden="true">描</span><b>Пропись</b><small>Иероглиф виден бледным контуром — обведите его черта за чертой. Ошиблись — подсветим нужную черту.</small></button>
+<button type="button" class="demo-mode" data-action="mode" data-mode="memory"><span class="zh" lang="zh-Hans" aria-hidden="true">默</span><b>Письмо</b><small>Пустая клетка: только перевод и пиньинь — пишете по памяти. После двух ошибок появится подсказка.</small></button>
 </div>
 </div>
 <div class="demo-screen demo-write" data-screen="write" hidden>
@@ -538,7 +538,7 @@ ${[['是', 'Глаголы'], ['大', 'Прилагательные'], ['爸', '
 <div class="demo-screen" data-screen="done" hidden>
 <p class="demo-big zh" lang="zh-Hans" aria-hidden="true">好</p>
 <h3>Список пройден!</h3>
-<p class="demo-muted">В приложении вас ждут прописи в четыре раунда, режим «Тест» с подсчётом ошибок, свои списки слов и ещё пять стартовых списков.</p>
+<p class="demo-muted">В приложении — полная пропись с показом порядка черт, переключатели «Пиньинь» и «Тест», свои списки слов и все стартовые списки.</p>
 <div class="demo-actions"><a class="demo-primary" href="#download">Скачать приложение</a><button type="button" class="demo-secondary" data-action="restart">Пройти ещё раз</button></div>
 </div>
 </div>

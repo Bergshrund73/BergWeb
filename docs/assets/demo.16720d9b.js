@@ -119,7 +119,7 @@ if (screen === 'write') { render(); resize(); }
 }
 function render() {
 var w = word(), cs = chars(), done = charDone(), count = charData().s.length;
-$('[data-out="progress"]').textContent = 'Слово ' + (st.wi + 1) + ' из ' + data.words.length + ' · ' + (st.mode === 'trace' ? 'Обводка' : 'По памяти');
+$('[data-out="progress"]').textContent = 'Слово ' + (st.wi + 1) + ' из ' + data.words.length + ' · ' + (st.mode === 'trace' ? 'Пропись' : 'Письмо');
 $('[data-out="ru"]').textContent = w.ru;
 $('[data-out="py"]').textContent = w.py;
 var cells = $('[data-out="cells"]');
