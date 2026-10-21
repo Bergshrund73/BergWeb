@@ -105,7 +105,6 @@ const shots = {
   copybook: await shot('shot-copybook.png'),
   trace: await shot('shot-trace.png'),
   lists: await shot('shot-lists.png'),
-  words: await shot('shot-words.png'),
 };
 
 // ---------- Open Graph image 1200x630 ----------
@@ -246,11 +245,6 @@ h3{margin:0 0 8px;font-size:1.1875rem}
 .card{background:var(--paper-hi);border:1px solid var(--line);border-radius:20px;padding:24px}
 .card p{margin:0;color:var(--muted)}
 .card .glyph{float:inline-end;width:56px;height:56px;display:grid;place-items:center;border-radius:14px;background:var(--red-soft);font-size:2rem;margin-inline-start:12px}
-.gallery{list-style:none;margin:0;padding:0;display:grid;gap:32px;justify-items:center}
-@media (min-width:900px){.gallery{grid-template-columns:repeat(3,1fr)}}
-.gallery figure{margin:0;width:min(260px,80vw)}
-.gallery .phone{width:100%;border-width:8px;border-radius:30px}
-.gallery figcaption{margin-top:14px;text-align:center;color:var(--muted);font-size:.9375rem}
 .checks{list-style:none;margin:0;padding:0;display:grid;gap:12px}
 @media (min-width:760px){.checks{grid-template-columns:repeat(2,1fr)}}
 .checks li{position:relative;padding-inline-start:30px}
@@ -299,7 +293,7 @@ details p{margin:0;padding:0 20px 18px;color:var(--muted)}
 .demo-steps li.on{color:var(--ink)}
 .demo-steps li.on span{background:var(--red);color:var(--on-red)}
 .demo-steps li[aria-current]{background:var(--paper-hi);font-weight:700}
-.demo-card{background:var(--paper-hi);border:1px solid var(--line);border-radius:24px;padding:clamp(20px,3vw,40px);min-height:420px}
+.demo-card{background:var(--paper);border:1px solid var(--line);border-radius:24px;padding:clamp(20px,3vw,40px);min-height:420px}
 .demo-lists{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
 .demo-list{display:flex;align-items:center;gap:14px;padding:14px;min-height:84px;border-radius:18px;border:1px solid var(--red);background:var(--paper-hi);color:var(--ink);text-align:start;box-shadow:0 6px 18px rgba(179,54,43,.12)}
 .demo-list .zh{flex:none;width:56px;height:56px;display:grid;place-items:center;border-radius:14px;background:var(--red-soft);font-size:1.875rem}
@@ -355,7 +349,6 @@ const STYLE = minCss(CSS + CSS_BELOW);
 const STYLE_HASH = crypto.createHash('sha256').update(STYLE, 'utf8').digest('base64');
 
 const HERO_SIZES = '(min-width: 417px) 300px, 72vw';
-const GALLERY_SIZES = '(min-width: 325px) 260px, 80vw';
 
 const ld = [
   {
@@ -493,7 +486,35 @@ ${WITH_APK
 <div class="phone">${picture(shots.copybook, { alt: 'Экран прописи: приложение по одной черте показывает порядок написания иероглифа 我', sizes: HERO_SIZES, w: SHOT.w, h: SHOT.h, lcp: true })}</div>
 </div>
 </div>
-<section id="try" aria-labelledby="try-title">
+<section id="how" class="alt" aria-labelledby="how-title">
+<div class="container">
+<h2 id="how-title">${zhDeco('笔顺')}Как проходит тренировка</h2>
+<p class="sub">В режиме «Пропись» каждый иероглиф проходит путь от показа до письма по памяти. Подсказок становится меньше с каждым раундом.</p>
+<ol class="steps five">
+<li><span class="term">${zh('笔顺')}bǐshùn</span><h3>Показ порядка черт</h3><p>Иероглиф рисуется по одной черте, рядом — лента со всеми шагами. Тап по клетке пропускает показ.</p></li>
+<li><span class="term">${zh('描红')}miáohóng</span><h3>Обводка с подсказкой</h3><p>Вы обводите иероглиф по контуру. Ошиблись — приложение сразу покажет, как провести черту.</p></li>
+<li><h3>Обводка</h3><p>Контур тот же, но подсказка появляется только после ошибки.</p></li>
+<li><h3>Частичная опора</h3><p>Целого контура больше нет — видна лишь следующая черта.</p></li>
+<li><span class="term">${zh('默写')}mòxiě</span><h3>По памяти</h3><p>Пустая клетка с сеткой ${zh('田')} и без ленты порядка черт. Слово из нескольких иероглифов в конце пишется целиком.</p></li>
+</ol>
+</div>
+</section>
+<section id="modes" aria-labelledby="modes-title">
+<div class="container">
+<h2 id="modes-title">${zhDeco('模式')}Режимы тренировки</h2>
+<p class="sub">Выберите, как учить слова, и включите нужные переключатели. Настройки открываются кнопкой над словами списка и запоминаются.</p>
+<div class="cards">
+<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">描</span><h3>Пропись</h3><p>Пошаговое обучение новому иероглифу: показ порядка черт → обводка → по памяти → слово целиком.</p></article>
+<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">字</span><h3>Письмо</h3><p>Видите перевод и пиньинь — пишете иероглифы. Кнопка «Подсказка» покажет контур, если забыли.</p></article>
+</div>
+<h3 class="modes-h">Переключатели для «Письма» — по отдельности или вместе</h3>
+<div class="opts">
+<article class="opt"><h3><span class="sw" aria-hidden="true"></span>Пиньинь</h3><p>Чтение скрыто — его нужно ввести после иероглифов. Тон — цифрой после слога или кнопкой: <span lang="zh-Latn-pinyin">nv3 → nǚ</span>.</p></article>
+<article class="opt"><h3><span class="sw" aria-hidden="true"></span>Тест</h3><p>Без подсказок, слова вперемешку, ошибки считаются. Проверьте 5, 10 или все слова списка — в конце итог: что написано чисто и где были ошибки.</p></article>
+</div>
+</div>
+</section>
+<section id="try" class="alt" aria-labelledby="try-title">
 <div class="container">
 <h2 id="try-title">${zhDeco('试一试')}Попробуйте прямо в браузере</h2>
 <p class="sub">Откройте стартовый список, выберите режим и напишите иероглиф мышкой или пальцем. Каждая черта проверяется сразу — так же, как в приложении.</p>
@@ -543,45 +564,6 @@ ${[['是', 'Глаголы'], ['大', 'Прилагательные'], ['爸', '
 </div>
 </div>
 </div>
-</div>
-</section>
-<section id="how" class="alt" aria-labelledby="how-title">
-<div class="container">
-<h2 id="how-title">${zhDeco('笔顺')}Как проходит тренировка</h2>
-<p class="sub">В режиме «Пропись» каждый иероглиф проходит путь от показа до письма по памяти. Подсказок становится меньше с каждым раундом.</p>
-<ol class="steps five">
-<li><span class="term">${zh('笔顺')}bǐshùn</span><h3>Показ порядка черт</h3><p>Иероглиф рисуется по одной черте, рядом — лента со всеми шагами. Тап по клетке пропускает показ.</p></li>
-<li><span class="term">${zh('描红')}miáohóng</span><h3>Обводка с подсказкой</h3><p>Вы обводите иероглиф по контуру. Ошиблись — приложение сразу покажет, как провести черту.</p></li>
-<li><h3>Обводка</h3><p>Контур тот же, но подсказка появляется только после ошибки.</p></li>
-<li><h3>Частичная опора</h3><p>Целого контура больше нет — видна лишь следующая черта.</p></li>
-<li><span class="term">${zh('默写')}mòxiě</span><h3>По памяти</h3><p>Пустая клетка с сеткой ${zh('田')} и без ленты порядка черт. Слово из нескольких иероглифов в конце пишется целиком.</p></li>
-</ol>
-</div>
-</section>
-<section id="modes" aria-labelledby="modes-title">
-<div class="container">
-<h2 id="modes-title">${zhDeco('模式')}Режимы тренировки</h2>
-<p class="sub">Выберите, как учить слова, и включите нужные переключатели. Настройки открываются кнопкой над словами списка и запоминаются.</p>
-<div class="cards">
-<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">描</span><h3>Пропись</h3><p>Пошаговое обучение новому иероглифу: показ порядка черт → обводка → по памяти → слово целиком.</p></article>
-<article class="card"><span class="glyph zh" lang="zh-Hans" aria-hidden="true">字</span><h3>Письмо</h3><p>Видите перевод и пиньинь — пишете иероглифы. Кнопка «Подсказка» покажет контур, если забыли.</p></article>
-</div>
-<h3 class="modes-h">Переключатели для «Письма» — по отдельности или вместе</h3>
-<div class="opts">
-<article class="opt"><h3><span class="sw" aria-hidden="true"></span>Пиньинь</h3><p>Чтение скрыто — его нужно ввести после иероглифов. Тон — цифрой после слога или кнопкой: <span lang="zh-Latn-pinyin">nv3 → nǚ</span>.</p></article>
-<article class="opt"><h3><span class="sw" aria-hidden="true"></span>Тест</h3><p>Без подсказок, слова вперемешку, ошибки считаются. Проверьте 5, 10 или все слова списка — в конце итог: что написано чисто и где были ошибки.</p></article>
-</div>
-</div>
-</section>
-<section id="screens" class="alt" aria-labelledby="screens-title">
-<div class="container">
-<h2 id="screens-title">${zhDeco('界面')}Как это выглядит</h2>
-<p class="sub">Спокойная тема «рисовая бумага»: тушь, киноварь и сетка 田 для каждого иероглифа. Тёмная тема включается вместе с системной.</p>
-<ul class="gallery">
-<li><figure><div class="phone">${picture(shots.trace, { alt: 'Раунд обводки: контур иероглифа 我 и подсвеченная черта, которую нужно провести', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Обводка с подсказкой следующей черты</figcaption></figure></li>
-<li><figure><div class="phone">${picture(shots.lists, { alt: 'Экран списков: карточки списков «Местоимения», «Глаголы», «Прилагательные»', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Ваши списки слов</figcaption></figure></li>
-<li><figure><div class="phone">${picture(shots.words, { alt: 'Список «Местоимения»: иероглифы 我, 你, 他, 她 с пиньинем и переводом', sizes: GALLERY_SIZES, w: SHOT.w, h: SHOT.h })}</div><figcaption>Слова с пиньинем и переводом</figcaption></figure></li>
-</ul>
 </div>
 </section>
 <section id="lists" aria-labelledby="lists-title">
