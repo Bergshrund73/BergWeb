@@ -1,10 +1,13 @@
 // Builds the BergHanziTrainer landing page: images (AVIF/WebP/JPEG, fingerprinted), index.html,
-// robots.txt, sitemap.xml and (with --with-apk) the APK copy. App facts (version, icon, APK, stroke data) are read
-// from the BergHanziTrainer checkout, by default a sibling folder of this repository. Usage:
+// robots.txt and sitemap.xml. App facts (version, icon, APK, stroke data) are read from the BergHanziTrainer checkout,
+// by default a sibling folder of this repository. The APK itself is not copied: it is attached to the GitHub Release
+// v<version>, and the page links there. Counter and feedback settings come from site.config.json. Usage:
 //   node build.mjs                                   -> ../docs, https://bergshrund73.github.io/BergWeb/
 //   node build.mjs --out <dir> --base <url>          -> e.g. a localhost build for validation
 //   node build.mjs --app <path to BergHanziTrainer>
-//   node build.mjs --with-apk                        -> publish the release APK; without it the download is a stub
+//   node build.mjs --with-apk                        -> link the release APK; without it the download is a stub
+//   node build.mjs --with-apk --apk <file>           -> size and SHA-256 from this file instead of the app's release build
+//   node build.mjs --config <file>                   -> another site.config.json (e.g. test keys for a local build)
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -35,9 +38,15 @@ const VERSION = gradle.match(/versionName = "([^"]+)"/)[1];
 const MIN_SDK = Number(gradle.match(/minSdk = (\d+)/)[1]);
 const ANDROID_BY_SDK = { 29: '10', 30: '11', 31: '12', 33: '13', 34: '14', 35: '15' };
 const ANDROID_MIN = ANDROID_BY_SDK[MIN_SDK];
-const APK_SRC = path.join(REPO, 'app/build/outputs/apk/release/app-release.apk');
+const APK_SRC = args.apk ? path.resolve(args.apk) : path.join(REPO, 'app/build/outputs/apk/release/app-release.apk');
 const APK_NAME = `berghanzitrainer-${VERSION}.apk`;
 const WITH_APK = process.argv.includes('--with-apk');
+const SITE = JSON.parse(fs.readFileSync(path.resolve(HERE, args.config ?? 'site.config.json'), 'utf8'));
+if (!/^[\w.-]+\/[\w.-]+$/.test(SITE.githubRepo)) throw new Error(`Bad githubRepo: ${SITE.githubRepo}`);
+if (SITE.goatcounter && !/^[a-z0-9-]+$/.test(SITE.goatcounter)) throw new Error(`Bad goatcounter code: ${SITE.goatcounter}`);
+if (SITE.web3formsKey && !/^[0-9a-f-]{36}$/i.test(SITE.web3formsKey)) throw new Error('Bad web3formsKey');
+const GC_ORIGIN = SITE.goatcounter ? `https://${SITE.goatcounter}.goatcounter.com` : '';
+const FORM_ENDPOINT = 'https://api.web3forms.com/submit';
 const apkBytes = WITH_APK ? fs.readFileSync(APK_SRC) : null;
 const APK_SHA256 = apkBytes && crypto.createHash('sha256').update(apkBytes).digest('hex');
 const APK_MB = apkBytes && Math.round(apkBytes.length / 1024 / 1024);
@@ -51,10 +60,6 @@ fs.rmSync(path.join(OUT, 'download'), { recursive: true, force: true });
 fs.rmSync(path.join(OUT, 'assets'), { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT, 'assets'), { recursive: true });
 fs.mkdirSync(path.join(OUT, 'images'), { recursive: true });
-if (WITH_APK) {
-  fs.mkdirSync(path.join(OUT, 'download'), { recursive: true });
-  fs.copyFileSync(APK_SRC, path.join(OUT, 'download', APK_NAME));
-}
 
 const hash8 = (buf) => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 8);
 function emit(buf, base, ext) {
@@ -147,6 +152,10 @@ const demoJs = fs.readFileSync(path.join(HERE, 'demo.js'), 'utf8')
   .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('//')).join('\n');
 if (Buffer.byteLength(demoJs) > 15 * 1024) throw new Error(`demo.js is ${Buffer.byteLength(demoJs)} bytes, over the 15 KB budget`);
 const DEMO_JS = emitAsset(Buffer.from(demoJs), 'demo', 'js');
+const siteJs = fs.readFileSync(path.join(HERE, 'site.js'), 'utf8')
+  .split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('//')).join('\n');
+if (Buffer.byteLength(siteJs) > 8 * 1024) throw new Error(`site.js is ${Buffer.byteLength(siteJs)} bytes, over the 8 KB budget`);
+const SITE_JS = emitAsset(Buffer.from(siteJs), 'site', 'js');
 
 // ---------- markup helpers ----------
 const srcset = (list) => list.map(([f, w]) => `${abs(f)} ${w}w`).join(', ');
@@ -162,7 +171,7 @@ function picture(set, { alt, sizes, w, h, lcp = false, eager = false, cls = '' }
 }
 
 const CANONICAL = abs('./');
-const APK_URL = abs(`download/${APK_NAME}`);
+const APK_URL = safeUrl(`https://github.com/${SITE.githubRepo}/releases/download/v${VERSION}/${APK_NAME}`);
 const GITHUB_PROFILE = 'https://github.com/Bergshrund73';
 const TITLE = 'Тренажёр написания китайских иероглифов — BergHanziTrainer';
 const DESCRIPTION = 'Учитесь писать китайские иероглифы на Android: порядок черт, обводка, письмо по памяти, пиньинь и свои списки слов. Бесплатно, работает без интернета.';
@@ -276,6 +285,26 @@ legend{font-weight:700;padding:0 8px}
 .amounts legend{padding:0;margin-bottom:8px;font-weight:600;width:100%}
 .amounts label{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 14px}
 .stub{margin:0 0 16px;padding:12px 16px;border-radius:12px;background:var(--red-soft);font-weight:600}
+.stats{margin:20px 0 0}
+.stats h3{font-size:1.0625rem}
+.stats ul{margin:0;padding-inline-start:20px;color:var(--muted)}
+.fb label{display:block;font-weight:600;margin:16px 0 6px}
+.fb label small{font-weight:400;color:var(--muted)}
+.fb .amounts{margin-top:0}
+.fb .amounts label{margin:0;font-weight:400}
+.fb textarea,.fb input[type=text],.fb input[type=email]{display:block;width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--paper-hi);color:var(--ink);font:inherit}
+.fb textarea{resize:vertical;min-height:140px}
+.fb textarea:focus-visible,.fb input:focus-visible{outline:3px solid var(--ice);outline-offset:1px}
+.fb .consent{display:flex;gap:10px;align-items:flex-start;font-weight:400}
+.fb .consent input{margin-top:.35em}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.btn-submit{margin-top:20px;min-height:52px;padding:10px 28px;border-radius:16px;border:0;background:var(--red);color:var(--on-red);font:inherit;font-weight:700;cursor:pointer}
+.btn-submit:focus-visible{outline:3px solid var(--ice);outline-offset:3px}
+.btn-submit:disabled{opacity:.6;cursor:progress}
+.fb-status{margin:12px 0 0;font-weight:600}
+.fb-status:empty{display:none}
+.fb-status.ok{color:var(--jade)}
+.fb-status.bad{color:var(--red)}
 button[disabled]{min-height:48px;padding:10px 24px;border-radius:14px;border:0;background:var(--shade);color:var(--muted);font:inherit;font-weight:700;cursor:not-allowed}
 details{border:1px solid var(--line);border-radius:16px;background:var(--paper-hi);margin-bottom:12px}
 summary{cursor:pointer;padding:16px 20px;font-weight:700}
@@ -398,17 +427,17 @@ const ld = [
 
 const CSP = [
   "default-src 'none'",
-  "img-src 'self'",
-  "connect-src 'self'",
+  ["img-src 'self'", GC_ORIGIN].filter(Boolean).join(' '),
+  ["connect-src 'self'", WITH_APK && 'https://api.github.com', GC_ORIGIN, SITE.web3formsKey && new URL(FORM_ENDPOINT).origin].filter(Boolean).join(' '),
   "script-src 'self'",
   `style-src 'sha256-${STYLE_HASH}'`,
   "base-uri 'self'",
-  "form-action 'none'",
+  SITE.web3formsKey ? `form-action ${FORM_ENDPOINT} https://web3forms.com` : "form-action 'none'",
   "object-src 'none'",
 ].join('; ');
 
 const DL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M11 3h2v9.17l3.59-3.58L18 10l-6 6-6-6 1.41-1.41L11 12.17V3zM5 18h14v2H5z"/></svg>';
-const dlButton = (detail, cls = '') => `<a class="btn btn-primary btn-dl${cls}" href="${esc(APK_URL)}" download="${esc(APK_NAME)}" type="application/vnd.android.package-archive">${DL_ICON}<span>Скачать APK<small>${detail}</small></span></a>`;
+const dlButton = (detail, cls = '') => `<a class="btn btn-primary btn-dl${cls}" href="${esc(APK_URL)}" type="application/vnd.android.package-archive">${DL_ICON}<span>Скачать APK<small>${detail}</small></span></a>`;
 // What changed in the published version, shown under the download button.
 const WHATS_NEW = [
   'Тренировка настраивается по-новому: «Пропись» или «Письмо» плюс переключатели «Пиньинь» и «Тест»',
@@ -460,6 +489,7 @@ const html = `<!doctype html>
 <a class="nav-extra" href="#how">Как учиться</a>
 <a class="nav-extra" href="#modes">Режимы</a>
 <a class="nav-extra" href="#donate">Поддержать</a>
+<a class="nav-extra" href="#feedback">Отзывы</a>
 <a class="nav-cta" href="#download">Скачать</a>
 </nav>
 </div>
@@ -588,7 +618,11 @@ ${[['是', 'Глаголы'], ['大', 'Прилагательные'], ['爸', '
 ${WITH_APK
   ? `<p class="sub">Приложение распространяется файлом APK. Установка занимает минуту, новая версия ставится поверх старой — слова и прогресс сохраняются.</p>
 ${dlButton(`версия ${esc(VERSION)} · ${APK_MB}&nbsp;МБ`, ' btn-big')}
-<p class="hint">Открыли страницу на компьютере? Откройте её на телефоне или перенесите скачанный файл по кабелю.</p>`
+<p class="hint">Открыли страницу на компьютере? Откройте её на телефоне или перенесите скачанный файл по кабелю.</p>
+<div class="stats" data-stats="${esc(`https://api.github.com/repos/${SITE.githubRepo}/releases?per_page=20`)}" data-version="${esc(VERSION)}" hidden>
+<h3>Скачивания</h3>
+<ul data-out="downloads"></ul>
+</div>`
   : `<p class="sub">Приложение будет распространяться файлом APK. Установка займёт минуту.</p>
 <p class="stub">Скачивание скоро появится на этой странице.</p>
 <button type="button" disabled>Скачать APK</button>`}
@@ -642,15 +676,59 @@ ${WHATS_NEW.map((t) => `<li>${esc(t)}</li>`).join('\n')}
 ${FAQ.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('\n')}
 </div>
 </section>
+<section id="feedback" aria-labelledby="feedback-title">
+<div class="container donate">
+<div>
+<h2 id="feedback-title">${zhDeco('反馈')}Отзывы и предложения</h2>
+<p class="sub">Что понравилось, чего не хватает, где приложение ошиблось — напишите. Каждое сообщение читает сам разработчик.</p>
+<p class="note">Нашли ошибку? Укажите версию приложения и опишите, что делали перед ней.</p>
+</div>
+${SITE.web3formsKey
+  ? `<form class="fb" action="${esc(FORM_ENDPOINT)}" method="post" accept-charset="utf-8" data-feedback aria-labelledby="fb-title">
+<input type="hidden" name="access_key" value="${esc(SITE.web3formsKey)}">
+<input type="hidden" name="subject" value="BergHanziTrainer: сообщение с сайта">
+<input type="hidden" name="from_name" value="Сайт BergHanziTrainer">
+<input type="checkbox" name="botcheck" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+<fieldset>
+<legend id="fb-title">Сообщение</legend>
+<fieldset class="amounts"><legend>Тема</legend>
+<label><input type="radio" name="topic" value="Отзыв" checked>Отзыв</label>
+<label><input type="radio" name="topic" value="Предложение">Предложение</label>
+<label><input type="radio" name="topic" value="Ошибка">Ошибка</label>
+</fieldset>
+<label for="fb-message">Текст</label>
+<textarea id="fb-message" name="message" rows="6" minlength="5" maxlength="4000" required></textarea>
+<label for="fb-version">Версия приложения <small>необязательно</small></label>
+<input id="fb-version" type="text" name="app_version" value="${esc(VERSION)}" maxlength="20" autocomplete="off">
+<label for="fb-email">Email для ответа <small>необязательно</small></label>
+<input id="fb-email" type="email" name="email" maxlength="200" autocomplete="email" inputmode="email">
+<label class="consent" data-consent><input type="checkbox" name="consent" value="да">Согласен(на), чтобы мой email использовали только для ответа на это сообщение</label>
+<p class="hint">Сообщение уходит на почту разработчика через сервис Web3Forms. Email указывать не обязательно.</p>
+<button type="submit" class="btn-submit">Отправить</button>
+<p class="fb-status" role="status" data-out="fb-status"></p>
+</fieldset>
+</form>`
+  : `<form aria-labelledby="fb-title">
+<fieldset disabled>
+<legend id="fb-title">Сообщение</legend>
+<p class="stub">Форма отзывов скоро появится на этой странице.</p>
+<button type="submit" disabled>Отправить</button>
+</fieldset>
+</form>`}
+</div>
+</section>
 </main>
 <footer class="site-footer">
 <div class="container">
 <p>© 2026 BergHanziTrainer · частная разработка <a href="${esc(GITHUB_PROFILE)}">Bergshrund73</a></p>
 <p>Данные о порядке черт — <a href="https://github.com/skishore/makemeahanzi">Make Me a Hanzi</a> (Arphic Public License, LGPL). Иероглифы логотипа — шрифт Ma Shan Zheng (SIL Open Font License 1.1).</p>
+${GC_ORIGIN ? `<p data-visits="${esc(`${GC_ORIGIN}/counter/TOTAL.json`)}" hidden>Посещений сайта: <span data-out="visits"></span> · счётчик <a href="https://www.goatcounter.com/">GoatCounter</a> без cookie</p>
+<noscript><img src="${esc(`${GC_ORIGIN}/count?p=${encodeURIComponent(new URL(CANONICAL).pathname)}`)}" alt="" width="1" height="1"></noscript>` : ''}
 </div>
 </footer>
 ${ld.map((o) => `<script type="application/ld+json">${jsonLd(o)}</script>`).join('\n')}
 <script src="${esc(abs(DEMO_JS))}" defer></script>
+<script src="${esc(abs(SITE_JS))}" data-canonical="${esc(CANONICAL)}" data-gc="${esc(GC_ORIGIN)}" defer></script>
 </body>
 </html>
 `;
