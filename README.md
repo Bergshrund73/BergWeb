@@ -5,6 +5,7 @@ Landing page for [BergHanziTrainer](https://bergshrund73.github.io/BergWeb/), pu
 - `tools/build.mjs` regenerates `docs/` (images, HTML, robots.txt, sitemap.xml) from the BergHanziTrainer checkout next to
   this folder (`--app <path>` to override). The APK is attached to the GitHub Release `v<version>`, not stored in `docs/`;
   `--with-apk` links it.
+- `tools/src/guide.md` is the text of the `guide.html` instruction page (a small Markdown subset; every `##` needs a `{#id}`).
 - `tools/site.config.json`: GoatCounter site code and Web3Forms key; `tools/site.js` is the visit/download counters and the feedback form.
 - `tools/demo.js` is the "Попробуйте в браузере" demo (live stroke checks ported from the app); the build ships it as `docs/assets/demo.<hash>.js` with the stroke data of the first starter list words.
 - `tools/check.mjs` checks local asset references, JSON-LD syntax and sitemap/robots against the canonical URL.

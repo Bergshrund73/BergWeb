@@ -189,6 +189,9 @@ const APK_URL = safeUrl(`https://github.com/${SITE.githubRepo}/releases/download
 const GITHUB_PROFILE = 'https://github.com/Bergshrund73';
 const TITLE = 'Тренажёр написания китайских иероглифов — BergHanziTrainer';
 const DESCRIPTION = 'Учитесь писать китайские иероглифы на Android: порядок черт, обводка, письмо по памяти, пиньинь и свои списки слов. Бесплатно, работает без интернета.';
+const GUIDE_URL = abs('guide.html');
+const GUIDE_TITLE = 'Как пользоваться BergHanziTrainer — инструкция';
+const GUIDE_DESCRIPTION = 'Инструкция к BergHanziTrainer: списки и слова, пропись, письмо, пиньинь и тест, импорт из Pleco и Anki, экспорт и резервная копия.';
 
 const FAQ = [
   ['Сколько стоит приложение?', 'Нисколько. BergHanziTrainer бесплатный, без рекламы и без подписок. Если приложение помогает, проект можно поддержать донатом.'],
@@ -197,7 +200,37 @@ const FAQ = [
   ['Почему APK, а не Google Play?', `Это частная разработка, поэтому приложение ${WITH_APK ? 'распространяется' : 'будет распространяться'} файлом APK прямо с этой страницы. Android попросит один раз разрешить установку из браузера или файлового менеджера.`],
   ['Можно перенести слова из Pleco или Anki?', 'Да. Импорт понимает файлы .txt, .csv и .tsv из Pleco, Anki и Excel, а также вставку текста. Списки можно выгрузить обратно для Pleco или сохранить резервной копией в JSON.'],
   ['Откуда данные о порядке черт?', `Из открытого проекта Make Me a Hanzi: в приложении ${fmtInt(STROKE_CHARS)} иероглифов с порядком черт.`],
+  ['Как добавить своё слово?', 'Введите его в поиск списка и нажмите «Добавить новое слово».'],
+  ['Можно ли учить одно слово в нескольких списках?', 'Да, отметьте нужные списки в карточке слова.'],
+  ['Что будет со словами, если удалить список?', 'Ничего: они останутся в «Все слова».'],
+  ['Как перенести всё на новый телефон?', 'Сохраните резервную копию, перенесите файл и загрузите его через импорт.'],
+  ['Почему черта не засчитывается?', 'Проверьте порядок и направление: черты пишутся сверху вниз и слева направо. Не уверены — включите «Пропись», она покажет порядок.'],
 ];
+
+// ---------- guide page: src/guide.md, a small Markdown subset (## {#id}, ###, paragraphs, - and 1. lists, **bold**, `code`) ----------
+const mdInline = (s) => esc(s)
+  .replace(/`([^`]+)`/g, '<code>$1</code>')
+  .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  .replace(/[⺀-⿟㐀-鿿]+/g, (m) => `<span class="zh" lang="zh-Hans">${m}</span>`);
+const GUIDE_TOC = [];
+const GUIDE_HTML = fs.readFileSync(path.join(HERE, 'src/guide.md'), 'utf8').replace(/\r/g, '').trim().split(/\n{2,}/).map((block) => {
+  const h = block.match(/^(#{2,3}) (.+?)(?: \{#([\w-]+)\})?$/);
+  if (h) {
+    if (h[1] === '##') {
+      if (!h[3]) throw new Error(`guide.md: no {#id} on «${h[2]}»`);
+      GUIDE_TOC.push([h[3], h[2]]);
+      return `<h2 id="${h[3]}">${mdInline(h[2])}</h2>`;
+    }
+    return `<h3>${mdInline(h[2])}</h3>`;
+  }
+  const list = block.match(/^(- |\d+\. )/);
+  if (list) {
+    const items = block.split(/\n(?=- |\d+\. )/).map((it) => `<li>${mdInline(it.replace(/^(- |\d+\. )/, '').replace(/\n\s*/g, ' '))}</li>`);
+    const tag = list[1] === '- ' ? 'ul' : 'ol';
+    return `<${tag}>${items.join('')}</${tag}>`;
+  }
+  return `<p>${mdInline(block.replace(/\n\s*/g, ' '))}</p>`;
+}).join('\n');
 
 // ---------- CSS (inlined; authorised by a CSP hash) ----------
 const CSS = `
@@ -222,6 +255,8 @@ a:focus-visible,summary:focus-visible{outline:3px solid var(--ice);outline-offse
 .nav .nav-cta:hover{background:var(--red)}
 .nav-extra{display:none}
 @media (min-width:760px){.nav-extra{display:inline-block}}
+@media (max-width:1019px){.nav .nav-wide{display:none}}
+.nav a[aria-current]{background:var(--shade)}
 .hero{padding:40px 0 56px}
 .hero-grid{display:grid;gap:40px;align-items:center}
 @media (min-width:900px){.hero-grid{grid-template-columns:1.25fr .75fr}.hero{padding:72px 0 88px}}
@@ -392,6 +427,20 @@ details p{margin:0;padding:0 20px 18px;color:var(--muted)}
 .demo-tools [aria-pressed="true"]{background:var(--red-soft);box-shadow:inset 0 0 0 2px var(--red)}
 .demo-big{margin:0;font-size:4rem;line-height:1;color:var(--jade)}
 .demo-note{color:var(--red)}
+.more{margin:24px 0 0;color:var(--muted)}
+.guide{max-width:820px;padding-block:32px 64px}
+.crumbs{margin:0 0 20px;color:var(--muted);font-size:.9375rem}
+.guide .lead{margin-bottom:28px}
+.toc{background:var(--paper-hi);border:1px solid var(--line);border-radius:20px;padding:20px 24px;margin:0 0 16px}
+.toc h2{font-size:1.0625rem;margin:0 0 8px}
+.toc ol{margin:0;padding-inline-start:22px;display:grid;gap:4px}
+.guide article h2{margin:48px 0 16px;scroll-margin-top:80px}
+.guide article h3{margin:28px 0 8px}
+.guide article p{margin:0 0 14px}
+.guide article ul,.guide article ol{margin:0 0 14px;padding-inline-start:24px;display:grid;gap:6px}
+.guide code{background:var(--shade);border-radius:6px;padding:1px 6px;font-size:.9375em}
+.guide-end{margin:48px 0 0;padding:24px;border-radius:20px;background:var(--jade-soft)}
+.guide-end p{margin:0 0 16px}
 `;
 const minCss = (s) => s.replace(/\n/g, '').replace(/\s*([{};:,>])\s*/g, '$1').replace(/;}/g, '}').trim();
 const STYLE = minCss(CSS + CSS_BELOW);
@@ -471,51 +520,66 @@ const WHATS_NEW = [
 const zh = (hanzi) => `<span class="zh" lang="zh-Hans">${esc(hanzi)}</span>`;
 const zhDeco = (hanzi) => `<span class="zh" lang="zh-Hans" aria-hidden="true">${esc(hanzi)}</span>`;
 
-const html = `<!doctype html>
+// <head> and the site header, shared by the landing page and the guide. `home` is '' on the landing page and its URL
+// elsewhere, so the section links lead back to it.
+const pageHead = ({ title, description, url, ogType = 'website' }) => `<!doctype html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-<title>${esc(TITLE)}</title>
-<meta name="description" content="${esc(DESCRIPTION)}">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(description)}">
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 <meta http-equiv="Content-Security-Policy" content="${esc(CSP)}">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#F4EFE6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#141619" media="(prefers-color-scheme: dark)">
-<link rel="canonical" href="${esc(CANONICAL)}">
+<link rel="canonical" href="${esc(url)}">
 <link rel="icon" type="image/png" sizes="96x96" href="${esc(abs('favicon.png'))}">
 <link rel="apple-touch-icon" href="${esc(abs('apple-touch-icon.png'))}">
-<meta property="og:type" content="website">
+<meta property="og:type" content="${ogType}">
 <meta property="og:locale" content="ru_RU">
 <meta property="og:site_name" content="BergHanziTrainer">
-<meta property="og:title" content="${esc(TITLE)}">
-<meta property="og:description" content="${esc(DESCRIPTION)}">
-<meta property="og:url" content="${esc(CANONICAL)}">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(description)}">
+<meta property="og:url" content="${esc(url)}">
 <meta property="og:image" content="${esc(abs(OG_IMG))}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Логотип BergHanziTrainer: иероглифы 山 и 冰, разделённые красной трещиной">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="${esc(TITLE)}">
-<meta name="twitter:description" content="${esc(DESCRIPTION)}">
+<meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(description)}">
 <meta name="twitter:image" content="${esc(abs(OG_IMG))}">
 <style>${STYLE}</style>
 </head>
-<body>
-<header class="site-header">
+<body>`;
+const siteHeader = (home) => `<header class="site-header">
 <div class="container bar">
 <a class="brand" href="${esc(CANONICAL)}">${picture(logo, { alt: '', sizes: '40px', w: 48, h: 48, eager: true })}<span>BergHanziTrainer</span></a>
-<nav class="nav" aria-label="Разделы страницы">
-<a class="nav-extra" href="#how">Как учиться</a>
-<a class="nav-extra" href="#modes">Режимы</a>
-<a class="nav-extra" href="#donate">Поддержать</a>
-<a class="nav-extra" href="#feedback">Отзывы</a>
-<a class="nav-cta" href="#download">Скачать</a>
+<nav class="nav" aria-label="Разделы сайта">
+<a class="nav-extra" href="${esc(home)}#how">Как учиться</a>
+<a class="nav-extra nav-wide" href="${esc(home)}#modes">Режимы</a>
+<a class="nav-extra" href="${esc(GUIDE_URL)}"${home ? ' aria-current="page"' : ''}>Инструкция</a>
+<a class="nav-extra" href="${esc(home)}#donate">Поддержать</a>
+<a class="nav-extra nav-wide" href="${esc(home)}#feedback">Отзывы</a>
+<a class="nav-cta" href="${esc(home)}#download">Скачать</a>
 </nav>
 </div>
-</header>
+</header>`;
+const siteFooter = (url) => `<footer class="site-footer">
+<div class="container">
+<p>© 2026 BergHanziTrainer · частная разработка <a href="${esc(GITHUB_PROFILE)}">Bergshrund73</a></p>
+<p>Данные о порядке черт — <a href="https://github.com/skishore/makemeahanzi">Make Me a Hanzi</a> (Arphic Public License, LGPL). Недостающие формы ключей — <a href="https://github.com/parsimonhi/animCJK">animCJK</a> и шрифты Arphic (Arphic Public License). Иероглифы логотипа — шрифт Ma Shan Zheng (SIL Open Font License 1.1).</p>
+${GC_ORIGIN ? `<p data-visits="${esc(`${GC_ORIGIN}/counter/TOTAL.json`)}" hidden>Посещений сайта: <span data-out="visits"></span> · счётчик <a href="https://www.goatcounter.com/">GoatCounter</a> без cookie</p>
+<noscript><img src="${esc(`${GC_ORIGIN}/count?p=${encodeURIComponent(new URL(url).pathname)}`)}" alt="" width="1" height="1"></noscript>` : ''}
+</div>
+</footer>`;
+const siteScript = `<script src="${esc(abs(SITE_JS))}" data-canonical="${esc(CANONICAL)}" data-gc="${esc(GC_ORIGIN)}" defer></script>`;
+
+const html = `${pageHead({ title: TITLE, description: DESCRIPTION, url: CANONICAL })}
+${siteHeader('')}
 <main id="main">
 <div class="hero">
 <div class="container hero-grid">
@@ -631,6 +695,7 @@ ${[['是', 'Глаголы'], ['大', 'Прилагательные'], ['爸', '
 <li>Резервная копия всех слов, списков и прогресса одним файлом</li>
 <li>Поиск по переводу, иероглифам и пиньиню — и тренировка только по найденным словам</li>
 </ul>
+<p class="more">Как перенести слова из Pleco и сделать резервную копию — по шагам <a href="${esc(GUIDE_URL)}#import">в инструкции</a>.</p>
 </div>
 </section>
 <section id="download" class="alt" aria-labelledby="download-title">
@@ -691,6 +756,7 @@ ${DONATE.map((d) => `<article class="pay-card">
 <div class="container">
 <h2 id="faq-title">${zhDeco('问答')}Вопросы и ответы</h2>
 ${FAQ.map(([q, a]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join('\n')}
+<p class="more">Подробно обо всех функциях — в <a href="${esc(GUIDE_URL)}">инструкции</a>.</p>
 </div>
 </section>
 <section id="feedback" aria-labelledby="feedback-title">
@@ -735,27 +801,69 @@ ${SITE.web3formsKey
 </div>
 </section>
 </main>
-<footer class="site-footer">
-<div class="container">
-<p>© 2026 BergHanziTrainer · частная разработка <a href="${esc(GITHUB_PROFILE)}">Bergshrund73</a></p>
-<p>Данные о порядке черт — <a href="https://github.com/skishore/makemeahanzi">Make Me a Hanzi</a> (Arphic Public License, LGPL). Недостающие формы ключей — <a href="https://github.com/parsimonhi/animCJK">animCJK</a> и шрифты Arphic (Arphic Public License). Иероглифы логотипа — шрифт Ma Shan Zheng (SIL Open Font License 1.1).</p>
-${GC_ORIGIN ? `<p data-visits="${esc(`${GC_ORIGIN}/counter/TOTAL.json`)}" hidden>Посещений сайта: <span data-out="visits"></span> · счётчик <a href="https://www.goatcounter.com/">GoatCounter</a> без cookie</p>
-<noscript><img src="${esc(`${GC_ORIGIN}/count?p=${encodeURIComponent(new URL(CANONICAL).pathname)}`)}" alt="" width="1" height="1"></noscript>` : ''}
-</div>
-</footer>
+${siteFooter(CANONICAL)}
 ${ld.map((o) => `<script type="application/ld+json">${jsonLd(o)}</script>`).join('\n')}
 <script src="${esc(abs(DEMO_JS))}" defer></script>
-<script src="${esc(abs(SITE_JS))}" data-canonical="${esc(CANONICAL)}" data-gc="${esc(GC_ORIGIN)}" defer></script>
+${siteScript}
 </body>
 </html>
 `;
 
-const minHtml = html.replace(/>\s*\n\s*</g, '><').replace(/\n/g, ' ').trim() + '\n';
+const guideLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    '@id': `${GUIDE_URL}#article`,
+    url: GUIDE_URL,
+    headline: GUIDE_TITLE,
+    description: GUIDE_DESCRIPTION,
+    inLanguage: 'ru',
+    image: abs(OG_IMG),
+    about: { '@id': `${CANONICAL}#app` },
+    author: { '@id': `${CANONICAL}#author` },
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'BergHanziTrainer', item: CANONICAL },
+      { '@type': 'ListItem', position: 2, name: 'Инструкция', item: GUIDE_URL },
+    ],
+  },
+];
+const guideHtml = `${pageHead({ title: GUIDE_TITLE, description: GUIDE_DESCRIPTION, url: GUIDE_URL, ogType: 'article' })}
+${siteHeader(CANONICAL)}
+<main id="main" class="container guide">
+<nav class="crumbs" aria-label="Навигация"><a href="${esc(CANONICAL)}">BergHanziTrainer</a> → Инструкция</nav>
+<h1>Как пользоваться BergHanziTrainer</h1>
+<p class="lead">Всё об основных функциях приложения: списки и слова, режимы тренировки, импорт и экспорт. Описана версия ${esc(VERSION)}.</p>
+<nav class="toc" aria-labelledby="toc-title">
+<h2 id="toc-title">Содержание</h2>
+<ol>${GUIDE_TOC.map(([id, t]) => `<li><a href="#${id}">${mdInline(t)}</a></li>`).join('')}</ol>
+</nav>
+<article>
+${GUIDE_HTML}
+</article>
+<aside class="guide-end">
+<p>Не нашли ответ — загляните в <a href="${esc(CANONICAL)}#faq">вопросы и ответы</a> или <a href="${esc(CANONICAL)}#feedback">напишите разработчику</a>.</p>
+${WITH_APK ? dlButton(`v${esc(VERSION)} · ${APK_MB}&nbsp;МБ · Android ${ANDROID_MIN}+`) : `<a class="btn btn-primary" href="${esc(CANONICAL)}#download">Скачать APK<small>скоро · Android ${ANDROID_MIN}+</small></a>`}
+</aside>
+</main>
+${siteFooter(GUIDE_URL)}
+${guideLd.map((o) => `<script type="application/ld+json">${jsonLd(o)}</script>`).join('\n')}
+${siteScript}
+</body>
+</html>
+`;
+
+const minify = (h) => h.replace(/>\s*\n\s*</g, '><').replace(/\n/g, ' ').trim() + '\n';
+const minHtml = minify(html);
 fs.writeFileSync(path.join(OUT, 'index.html'), minHtml);
+fs.writeFileSync(path.join(OUT, 'guide.html'), minify(guideHtml));
 fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
 fs.writeFileSync(path.join(OUT, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${abs('sitemap.xml')}\n`);
 const xmlEsc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]);
 fs.writeFileSync(path.join(OUT, 'sitemap.xml'),
-  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${xmlEsc(CANONICAL)}</loc></url>\n</urlset>\n`);
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${[CANONICAL, GUIDE_URL].map((u) => `  <url><loc>${xmlEsc(u)}</loc></url>\n`).join('')}</urlset>\n`);
 
-console.log(JSON.stringify({ out: OUT, base: BASE, version: VERSION, apk: WITH_APK ? APK_NAME : 'stub', apkMB: APK_MB, sha256: APK_SHA256, strokeChars: STROKE_CHARS, htmlBytes: Buffer.byteLength(minHtml), cssBytes: STYLE.length, og: OG_IMG }, null, 1));
+console.log(JSON.stringify({ out: OUT, base: BASE, version: VERSION, apk: WITH_APK ? APK_NAME : 'stub', apkMB: APK_MB, sha256: APK_SHA256, strokeChars: STROKE_CHARS, htmlBytes: Buffer.byteLength(minHtml), guideBytes: Buffer.byteLength(minify(guideHtml)), cssBytes: STYLE.length, og: OG_IMG }, null, 1));
