@@ -124,6 +124,20 @@ const og = await sharp({ create: { width: 1200, height: 630, channels: 3, backgr
   .jpeg({ quality: 85, mozjpeg: true }).toBuffer();
 const OG_IMG = emit(og, 'og-cover', 'jpg');
 
+// ---------- donation links and their QR codes (PNGs from the services, kept lossless) ----------
+const QR_PX = 300; // shown at 150 CSS px
+const DONATE = [
+  { name: 'CloudTips', url: 'https://pay.cloudtips.ru/p/9881136c', qr: 'qr-cloudtips.png', text: 'Разовый донат картой любого банка или через СБП — сумму выбираете сами.' },
+  { name: 'Boosty', url: 'https://boosty.to/bergshrund73/donate', qr: 'qr-boosty.png', text: 'Разовый донат на Boosty — тоже на любую сумму.' },
+];
+for (const d of DONATE) {
+  const src = sharp(path.join(HERE, 'src', d.qr));
+  const { width } = await src.metadata();
+  const png = await src.flatten({ background: '#ffffff' })
+    .resize(QR_PX, QR_PX, { kernel: width < QR_PX ? 'nearest' : 'lanczos3' }).png({ compressionLevel: 9 }).toBuffer();
+  d.img = emit(png, path.basename(d.qr, '.png'), 'png');
+}
+
 // ---------- "try it" demo: first words of the first starter list + their stroke data ----------
 const DEMO_WORDS = 5;
 const starter = JSON.parse(fs.readFileSync(path.join(REPO, 'app/src/main/assets/starter_lists/1_pronouns.json'), 'utf8'));
@@ -279,6 +293,12 @@ h3{margin:0 0 8px;font-size:1.1875rem}
 .sw::after{content:"";position:absolute;top:4px;inset-inline-end:4px;width:14px;height:14px;border-radius:50%;background:var(--on-red)}
 .donate{display:grid;gap:32px}
 @media (min-width:900px){.donate{grid-template-columns:1fr 1fr}}
+.pay{display:grid;gap:16px}
+.pay-card{display:flex;align-items:center;justify-content:space-between;gap:20px;border:1px solid var(--line);border-radius:20px;padding:20px 24px;background:var(--paper)}
+.pay-card h3{margin-top:0}
+.pay-card p{margin:0 0 16px;color:var(--muted)}
+.qr{flex:none;width:150px;height:150px;border-radius:8px;background:#fff}
+@media (max-width:599px){.qr{display:none}}
 fieldset{border:1px solid var(--line);border-radius:20px;padding:20px;margin:0;background:var(--paper)}
 legend{font-weight:700;padding:0 8px}
 .amounts{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px;padding:0;border:0;background:none}
@@ -656,18 +676,13 @@ ${WHATS_NEW.map((t) => `<li>${esc(t)}</li>`).join('\n')}
 <p class="sub">BergHanziTrainer — частная разработка без рекламы и подписок. Донаты помогают выделять время на новые режимы и списки слов.</p>
 <p class="note">Спасибо, что пользуетесь приложением! ${zh('谢谢')}</p>
 </div>
-<form aria-labelledby="donate-form-title">
-<fieldset disabled>
-<legend id="donate-form-title">Донат</legend>
-<p class="stub">Приём донатов скоро появится на этой странице.</p>
-<fieldset class="amounts"><legend>Сумма</legend>
-<label><input type="radio" name="amount" value="100">100&nbsp;₽</label>
-<label><input type="radio" name="amount" value="300">300&nbsp;₽</label>
-<label><input type="radio" name="amount" value="500">500&nbsp;₽</label>
-</fieldset>
-<button type="submit" disabled>Поддержать</button>
-</fieldset>
-</form>
+<div class="pay">
+${DONATE.map((d) => `<article class="pay-card">
+<div><h3>${esc(d.name)}</h3><p>${esc(d.text)}</p>
+<a class="btn btn-primary" href="${esc(safeUrl(d.url))}" target="_blank" rel="noopener">Поддержать через ${esc(d.name)}</a></div>
+<img class="qr" src="${esc(abs(d.img))}" width="150" height="150" loading="lazy" decoding="async" alt="QR-код: ${esc(d.name)} — откройте камерой телефона">
+</article>`).join('\n')}
+</div>
 </div>
 </section>
 <section id="faq" class="alt" aria-labelledby="faq-title">
