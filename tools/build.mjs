@@ -460,11 +460,13 @@ const DL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><
 const dlButton = (detail, cls = '') => `<a class="btn btn-primary btn-dl${cls}" href="${esc(APK_URL)}" type="application/vnd.android.package-archive">${DL_ICON}<span>Скачать APK<small>${detail}</small></span></a>`;
 // What changed in the published version, shown under the download button.
 const WHATS_NEW = [
-  'Тренировка настраивается по-новому: «Пропись» или «Письмо» плюс переключатели «Пиньинь» и «Тест»',
-  'Тест можно пройти без пиньиня и на 5, 10 или всех случайных словах списка',
-  'Системный список «Ключи»: 214 ключей Канси с вариантами форм (⺮, 亻, 氵…)',
-  'Новое слово сразу добавляется в несколько списков, у сохранённого слова списки можно поменять',
-  'Свои списки идут сверху, новые первыми; общий список теперь называется «Все слова»',
+  'Тренировка по поиску: найдите в списке слова с 水 — «Письмо», «Тест» и «Пропись» пойдут только по ним',
+  'В «Ключах» у каждого ключа кнопка «Слова с этим ключом»: открывает «Все слова» с этим ключом, и тренироваться можно только по ним',
+  'В карточке слова раздел «Ключи»: ключ каждого иероглифа из словаря, плюс свои ключи через «Добавить ключ»',
+  'Проверка черт строже: не засчитывает пропущенный или лишний крючок, недописанную черту, зигзаг и лишние штрихи',
+  'Подсказка рисуется по тем же чертам, по которым идёт проверка',
+  '15 форм ключей, которых не хватало (⻌, ⺧, ⺩, 牜, 龵 и другие), теперь пишутся с проверкой; 阝 стоит справа в значении «город» и слева в значении «холм»',
+  '«О приложении» в конце экрана «Списки»: версия, источники данных и тексты лицензий',
 ];
 const zh = (hanzi) => `<span class="zh" lang="zh-Hans">${esc(hanzi)}</span>`;
 const zhDeco = (hanzi) => `<span class="zh" lang="zh-Hans" aria-hidden="true">${esc(hanzi)}</span>`;
@@ -622,12 +624,12 @@ ${[['是', 'Глаголы'], ['大', 'Прилагательные'], ['爸', '
 <p class="sub">Учите то, что нужно именно вам: по учебнику, по курсу или из своего словаря.</p>
 <ul class="checks">
 <li>6 стартовых списков: местоимения, глаголы, прилагательные, семья и люди, места, еда и напитки</li>
-<li>Системный список «Ключи»: 214 ключей Канси с вариантами форм</li>
+<li>Системный список «Ключи»: 214 ключей Канси с вариантами форм; у каждого ключа — все ваши слова с ним</li>
 <li>Свои списки и слова: иероглифы, пиньинь, перевод; одно слово — сразу в нескольких списках</li>
 <li>Импорт из Pleco, Anki и Excel — файлы .txt, .csv, .tsv или вставка текста</li>
 <li>Выгрузка списка для Pleco и в JSON для другого телефона</li>
 <li>Резервная копия всех слов, списков и прогресса одним файлом</li>
-<li>Поиск по переводу, иероглифам и пиньиню</li>
+<li>Поиск по переводу, иероглифам и пиньиню — и тренировка только по найденным словам</li>
 </ul>
 </div>
 </section>
@@ -736,7 +738,7 @@ ${SITE.web3formsKey
 <footer class="site-footer">
 <div class="container">
 <p>© 2026 BergHanziTrainer · частная разработка <a href="${esc(GITHUB_PROFILE)}">Bergshrund73</a></p>
-<p>Данные о порядке черт — <a href="https://github.com/skishore/makemeahanzi">Make Me a Hanzi</a> (Arphic Public License, LGPL). Иероглифы логотипа — шрифт Ma Shan Zheng (SIL Open Font License 1.1).</p>
+<p>Данные о порядке черт — <a href="https://github.com/skishore/makemeahanzi">Make Me a Hanzi</a> (Arphic Public License, LGPL). Недостающие формы ключей — <a href="https://github.com/parsimonhi/animCJK">animCJK</a> и шрифты Arphic (Arphic Public License). Иероглифы логотипа — шрифт Ma Shan Zheng (SIL Open Font License 1.1).</p>
 ${GC_ORIGIN ? `<p data-visits="${esc(`${GC_ORIGIN}/counter/TOTAL.json`)}" hidden>Посещений сайта: <span data-out="visits"></span> · счётчик <a href="https://www.goatcounter.com/">GoatCounter</a> без cookie</p>
 <noscript><img src="${esc(`${GC_ORIGIN}/count?p=${encodeURIComponent(new URL(CANONICAL).pathname)}`)}" alt="" width="1" height="1"></noscript>` : ''}
 </div>
