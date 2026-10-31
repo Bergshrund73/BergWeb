@@ -128,7 +128,7 @@ const OG_IMG = emit(og, 'og-cover', 'jpg');
 const QR_PX = 300; // shown at 150 CSS px
 const DONATE = [ // hidden: true keeps an entry out of the page
   { name: 'CloudTips', url: 'https://pay.cloudtips.ru/p/9881136c', qr: 'qr-cloudtips.png', text: 'Разовый донат картой любого банка или через СБП — сумму выбираете сами.' },
-  { hidden: true, name: 'Boosty', url: 'https://boosty.to/bergshrund73/donate', qr: 'qr-boosty.png', text: 'Разовый донат на Boosty — тоже на любую сумму.' },
+  { name: 'Boosty', url: 'https://boosty.to/bergshrund73/donate', qr: 'qr-boosty.png', text: 'Разовый донат на Boosty — тоже на любую сумму.' },
 ].filter((d) => !d.hidden);
 for (const d of DONATE) {
   const src = sharp(path.join(HERE, 'src', d.qr));
